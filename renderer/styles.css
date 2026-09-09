@@ -1,0 +1,258 @@
+/*
+ * Glaze framework styles (@import "@glaze/core/..." and @import "tailwindcss")
+ * are automatically injected before this file during build and dev.
+ * Add your custom styles and @source directives below.
+ */
+
+/* Tell Tailwind to scan all local renderer window files for class names */
+@source "./**/*.{ts,tsx}";
+@source not "./preload.ts";
+@source not "./dev/**/*";
+
+/* Two-finger horizontal swipes belong to in-app history (Guide), never to
+   the browser's back/forward gesture. */
+html, body { overscroll-behavior-x: none; }
+
+/* Pearson Longman branding — Pearson primary blue confirmed from
+   pearson.com brand palette (Pearson Chambray #364395).
+   Longman dictionary blue #003366 used for ink/headings.
+   Chalk White #FFFFFF. Cream #fbf5ea is evocative of dictionary
+   paper, not an official brand color. System neutrals
+   (orange/green/red/etc.) are Tailwind UI semantics, not Pearson. */
+:root {
+  /* Pearson Chambray #364395 is the confirmed Pearson primary blue */
+  --bg: #fbf5ea; /* Cream — paper-swell background */
+  --bg-secondary: #ffffff; /* Chalk White */
+  --fg: #000000; /* Ink Black */
+  --theme-accent: #364395; /* Pearson Chambray (brand primary) */
+  /* One soft delimiter voice for every seam (pane divider, toolbar hem,
+     footer rule): Pearson blue breathed out so it never reads metallic. */
+  --delimiter: color-mix(in srgb, var(--blue) 32%, transparent);
+  --selection: #364395;
+  --blue: #003366; /* Longman dictionary blue — ink + headings */
+  --green: #008638;
+  --yellow: #FFB81C;
+  --red: #DB0020;
+  --purple: #9E007E;
+  --orange: #EA7600;
+  /* Soft delimiter voice for every seam — Pearson blue breathed out */
+  --delimiter: color-mix(in srgb, var(--blue) 32%, transparent);
+}
+/* Guarantee our values win over Glaze's base :root regardless of
+   build layer ordering or source order — higher specificity via
+   body element override, not data-glaze (that attribute doesn't
+   exist in Glaze's runtime; body always gets it). */
+body {
+  --theme-accent: #364395;
+  --blue: #003366;
+  --selection: #364395;
+}
+
+.dark {
+  --bg: #0b141f; /* Deep navy, tinted with Longman dictionary blue #003366 */
+  --bg-secondary: #111f2e;
+  --fg: #e2e8f0;
+  --theme-accent: #364395; /* Pearson Chambray */
+  --selection: #364395;
+  /* Support seeds MUST re-invert here: our :root values (same specificity
+     as Glaze's) otherwise clobber Glaze's dark palette and leave blue/red
+     text unreadable on dark grounds. Values = Glaze dark defaults. */
+  --blue: #56c2ff;
+  --green: #59d499;
+  --yellow: #ffc531;
+  --red: #ff6363;
+  --purple: #a485ff;
+  --orange: #ff9217;
+  --magenta: #cf2f98;
+}
+
+/* CD content (entry + help HTML) carries hardcoded print colors (near-black
+   body text, dark links) that vanish on dark grounds. Neutralize them to
+   inherited theme text in dark mode only — light mode keeps the originals. */
+.dark .led-entry-html [style],
+.dark .led-guide-html [style],
+.dark .led-entry-html font[color],
+.dark .led-guide-html font[color] {
+  color: inherit !important;
+}
+.dark .led-entry-html a,
+.dark .led-guide-html a {
+  /* Pearson Chambray #364395 lightened for navy — accessible on dark. */
+  color: #9fb4d9;
+}
+.dark .led-entry-html a:hover,
+.dark .led-guide-html a:hover {
+  color: #c4d2e8;
+}
+
+/* Scroll-pane headers are SOLID, not glass: translucent blur over scrolling
+   content both ghosts rows through the header and costs ~30% scroll fps
+   (backdrop-filter repaints every frame). The main tab bar keeps its glass —
+   nothing scrolls beneath it. */
+.glass-toolbar {
+  background: var(--bg);
+  border-bottom: 1px solid var(--delimiter);
+}
+
+.dark .glass-toolbar {
+  background: var(--bg-secondary);
+  border-bottom-color: var(--delimiter);
+}
+
+/* Fixed pane headers (search + chips) paint their own opaque ground, so no
+   ancestor translucency or blur can ever ghost rows through them. */
+.solid-pane-header {
+  background: var(--bg);
+}
+.dark .solid-pane-header {
+  background: var(--bg-secondary);
+}
+
+/* Guide article pane: solid secondary ground wall-to-wall, so the page
+   never reads as an extension of the tab bar. Sheet floats above it. */
+.guide-pane-ground {
+  background: var(--bg-secondary);
+}
+.dark .guide-pane-ground {
+  background: var(--bg-secondary);
+}
+
+* { scrollbar-width: thin; }
+
+/* SplitView divider: Glaze fades it top-to-bottom by design (mask gradient).
+   Ours runs full-height in Pearson blue — a delimiter should delimit. The
+   transparent-mix carries a solid-blue fallback for old engines. */
+.resize-handle {
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  background-color: var(--delimiter) !important;
+}
+
+/* App footer rule speaks the same delimiter voice. */
+.app-footer {
+  border-top: 1px solid var(--delimiter);
+}
+
+/* 8pt grid is baked into Tailwind spacing, but we enforce SF Pro tracking */
+.text-heading1 { letter-spacing: -0.02em; }
+.text-small { letter-spacing: 0.01em; }
+
+/* Detail-in: subtle fade + rise when the selected entry changes. Kept short
+   (160ms) per HIG — feedback, not theatre. Honors reduced motion. */
+@keyframes led-detail-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.led-detail-in { animation: led-detail-in 160ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  body:not(.led-motion-full) .led-detail-in { animation: none; }
+}
+
+/* Waterfall: entry sections cascade in when a word opens (staggered rise).
+   Delays by position; conditional sections simply take the next slot. */
+.led-waterfall > * { animation: led-detail-in 240ms ease-out both; }
+.led-waterfall > *:nth-child(2) { animation-delay: 50ms; }
+.led-waterfall > *:nth-child(3) { animation-delay: 100ms; }
+.led-waterfall > *:nth-child(4) { animation-delay: 150ms; }
+.led-waterfall > *:nth-child(5) { animation-delay: 200ms; }
+.led-waterfall > *:nth-child(6) { animation-delay: 250ms; }
+.led-waterfall > *:nth-child(7) { animation-delay: 300ms; }
+.led-waterfall > *:nth-child(8) { animation-delay: 350ms; }
+@media (prefers-reduced-motion: reduce) {
+  body:not(.led-motion-full) .led-waterfall > * { animation: none; }
+}
+
+/* Glaze ScrollArea always shows Radix custom scrollbars (type="scroll").
+   Hidden app-wide via Radix's own stable attribute: pane headers are solid
+   and chip bars live in fixed headers, so no thumb can park over controls.
+   Gesture, wheel and keyboard scrolling are unaffected. */
+[data-radix-scroll-area-scrollbar] {
+  display: none !important;
+}
+
+/* Guide reading theme: the CHM pages carry late-90s Windows help styling.
+   This layers a calm Longman reading voice over it (both modes) without
+   touching the content: midnight/sky headings, accent links, generous
+   leading, ruled breaks, and table/code basics. */
+.led-guide-html {
+  line-height: 1.65;
+}
+/* Body ink is softened toward Longman dictionary blue (both modes via one mix) —
+   pure ink on the sheet reads stringent, not Longman. Headings use
+   a softer mix so they blend with the sheet rather than staring. */
+.led-guide-html p,
+.led-guide-html li {
+  color: color-mix(in srgb, var(--fg) 80%, var(--blue));
+}
+.led-guide-html h2,
+.led-guide-html h3 {
+  color: color-mix(in srgb, var(--fg) 55%, var(--blue));
+}
+.led-guide-html a {
+  color: var(--theme-accent);
+  text-underline-offset: 2px;
+}
+.led-guide-html hr {
+  border: none;
+  border-top: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  margin: 1.25rem 0;
+}
+.led-guide-html table {
+  font-size: 13px;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  max-width: 100%;
+}
+.led-guide-html th,
+.led-guide-html td {
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+.led-guide-html th {
+  font-weight: 600;
+  background-color: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+.led-guide-html blockquote {
+  border-left: 3px solid var(--theme-accent);
+  padding-left: 0.75rem;
+  margin: 0.75rem 0;
+  color: inherit;
+}
+.led-guide-html code,
+.led-guide-html kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  background-color: color-mix(in srgb, var(--fg) 6%, transparent);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+
+/* Sliding tab pill: glides between Dictionary / Coach / Guide. Layout-driven
+   (left/width set from the live trigger), slow and calmly eased. */
+.led-tab-thumb {
+  transition: left 0.34s cubic-bezier(0.22, 1, 0.36, 1), width 0.34s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  body:not(.led-motion-full) .led-tab-thumb { transition: none; }
+}
+
+/* Tab glide keyframes (kept for reuse; tab switches play via WAAPI). */
+@keyframes led-tab-in {
+  from { opacity: 0; transform: translateX(10px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body:not(.led-motion-full) .led-tab-in { animation: none; }
+}
+
+/* Dialog pop: About content arrives with a soft scale + fade. */
+@keyframes led-dialog-in {
+  from { opacity: 0; transform: scale(0.98) translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.led-dialog-in { animation: led-dialog-in 170ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  body:not(.led-motion-full) .led-dialog-in { animation: none; }
+}
