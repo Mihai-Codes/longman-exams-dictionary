@@ -25,3 +25,4 @@ jobs:
       - run: npm ci
       - run: node scripts/verify.mjs
       - run: ./node_modules/.bin/tsc -p tsconfig.ci.json
+      - run: node scripts/bundle-check.mjs
