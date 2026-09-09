@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, useMemo, useRef, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useState, useMemo, useRef, type RefObject, type ReactNode } from "react";
 import {
   Button,
   Input,
@@ -442,7 +442,7 @@ function BulletDot({ size }: { size: "large" | "small" }) {
 // One bullet card shared by Examples and From-books-and-newspapers.
 // Bullet always inline with its first line (never centered, never stacked
 // above it). Every row gets a bullet (no first-row exception).
-function BulletCard({ children }: { children: React.ReactNode }) {
+function BulletCard({ children }: { children: ReactNode }) {
   return (
     <div className="flex items-start gap-2 rounded-lg bg-well/60 border border-separator/50 px-3 py-2.5">
       <BulletDot size="small" />

@@ -63,7 +63,7 @@ export function registerHandlers(): void {
   // aimed at an arbitrary URL (phishing-safe by construction).
   ipcMain.handle("shell:openOnline", async (_e, p: { hwd: string }) => {
     const slug = (p?.hwd || "").toLowerCase().trim().replace(/\s+/g, "-");
-    if (!slug || !/^[a-z0-9'’%.\-]+(?:-[a-z0-9'’%.\-]+)*$/.test(slug)) throw new Error("bad headword");
+    if (!slug || !/^[a-z0-9'’%.-]+(?:-[a-z0-9'’%.-]+)*$/.test(slug)) throw new Error("bad headword");
     const url = `https://www.ldoceonline.com/dictionary/${encodeURIComponent(slug)}`;
     await new Promise<void>((resolve, reject) => {
       execFile("/usr/bin/open", [url], (e) => (e ? reject(e) : resolve()));
