@@ -10,6 +10,12 @@
 
 Unofficial native macOS port of the classic **Longman Exams Dictionary CD-ROM (2006)**, built for upper-intermediate to advanced learners preparing for FCE, CAE, IELTS, TOEIC and TOEFL. Fully offline, no account, no tracking. Live on the [Glaze Store](https://www.glaze.app/) by Raycast.
 
+## Screenshots
+
+| Dictionary | Exams Coach | Guide |
+|---|---|---|
+| ![Dictionary entry](media/L-entry.png) | ![Exams Coach topic](media/L-coach-detail.png) | ![Guide article](media/L-guide-article.png) |
+
 ## Features
 
 - **Dictionary** — 42,380 headwords with pronunciations, verb forms, collocations and corpus examples; Top 1000 exam-priority markers; debounced instant search with A–Z paging
