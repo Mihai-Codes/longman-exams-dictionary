@@ -1,0 +1,22 @@
+name: verify-native
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Runs ONLY when explicitly enabled: needs a self-hosted runner on the Mac
+# that has the Glaze desktop app (the CLI and SDK exist nowhere else).
+# Enable: install a GitHub self-hosted runner on that Mac, label it
+# `glaze-mac`, then set repo variable MAC_RUNNER=true. Until then every
+# job skips cleanly and hosted CI remains the required check.
+jobs:
+  verify-native:
+    if: vars.MAC_RUNNER == 'true'
+    runs-on: [self-hosted, glaze-mac]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - run: bash glaze-node.sh verify

@@ -7,6 +7,7 @@
 ![Glaze](https://img.shields.io/badge/Glaze-0.14-364395)
 ![Offline](https://img.shields.io/badge/offline-100%25-008638)
 ![License](https://img.shields.io/badge/License-MIT-FFB81C)
+![CI](https://github.com/Mihai-Codes/longman-exams-dictionary/actions/workflows/verify.yml/badge.svg)
 
 Unofficial native macOS port of the classic **Longman Exams Dictionary CD-ROM (2006)**, built for upper-intermediate to advanced learners preparing for FCE, CAE, IELTS, TOEIC and TOEFL. Fully offline, no account, no tracking. Live on the [Glaze Store](https://www.glaze.app/) by Raycast.
 
@@ -54,6 +55,15 @@ npm install
 bash glaze-node.sh build
 bash glaze-node.sh repackage
 ```
+
+## CI
+
+Hosted CI (`verify`) runs on every push: install, 11 repo invariants,
+full `tsc` against committed SDK type stubs, and esbuild bundle-ability
+for both processes. The Glaze linker exists only inside the desktop app,
+so native builds stay local — or opt in: install a self-hosted runner on
+your Mac (label `glaze-mac`), set repo variable `MAC_RUNNER=true`, and
+`verify-native` runs the real `glaze-node.sh verify` there.
 
 ## Data provenance
 
