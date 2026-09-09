@@ -2,6 +2,7 @@
 // transforms every local + npm import in both processes. @glaze/* stays
 // external (the real SDK links it at package time), so this validates OUR
 // code bundles — the exact class that broke at 1262:15 before.
+/* global console, process */
 import { build } from "esbuild";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

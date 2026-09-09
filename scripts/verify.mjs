@@ -1,5 +1,6 @@
 // Portable pre-publish invariants: no Glaze SDK needed, runs on CI.
 // Encodes the project's red lines as executable assertions.
+/* global console, process */
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
