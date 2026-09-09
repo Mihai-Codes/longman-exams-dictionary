@@ -62,8 +62,8 @@ Hosted CI (`verify`) runs on every push: install, 11 repo invariants,
 full `tsc` against committed SDK type stubs, and esbuild bundle-ability
 for both processes. The Glaze linker exists only inside the desktop app,
 so native builds stay local — or opt in: install a self-hosted runner on
-your Mac (label `glaze-mac`), set repo variable `MAC_RUNNER=true`, and
-`verify-native` runs the real `glaze-node.sh verify` there.
+your Mac (any Apple Silicon runner matches), set repo variable
+`MAC_RUNNER=true`, and `verify-native` runs the real `glaze-node.sh verify` there.
 
 ## Data provenance
 
