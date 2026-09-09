@@ -24,3 +24,4 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node scripts/verify.mjs
+      - run: ./node_modules/.bin/tsc -p tsconfig.ci.json
