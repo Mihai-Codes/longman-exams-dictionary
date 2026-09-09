@@ -20,4 +20,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           lfs: true
+      # The Glaze SDK lives beside the desktop app, never in the repo.
+      # Link it where glaze.ts looks (two levels above the checkout),
+      # exactly mirroring the local layout.
+      - run: ln -sfn /Users/mihai/Glaze/.sdk "$(dirname $(dirname $GITHUB_WORKSPACE))/.sdk"
+      - run: npm ci
       - run: bash glaze-node.sh verify
