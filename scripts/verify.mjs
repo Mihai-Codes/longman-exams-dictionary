@@ -23,8 +23,8 @@ const src = readFileSync("renderer/main/home-view.tsx", "utf8");
 const journeys = [...src.matchAll(/files: \[(.*?)\]/g)].flatMap((m) =>
   [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1].toLowerCase()));
 const disk = readdirSync("data/help").filter((f) => f.endsWith(".htm")).map((f) => f.toLowerCase());
-check("49 help pages listed once each",
-  journeys.length === 49 && new Set(journeys).size === 49 && disk.every((f) => journeys.includes(f)));
+check("47 help pages listed once each",
+  journeys.length === 47 && new Set(journeys).size === 47 && disk.every((f) => journeys.includes(f)));
 for (const f of disk) {
   const html = readFileSync(`data/help/${f}`, "utf8");
   const heads = [...html.matchAll(/<(h1|h2|h3)[^>]*>(.*?)<\/\1>/gis)].map((m) => m[2].replace(/<[^>]+>/g, "").trim());

@@ -1154,11 +1154,11 @@ type HelpArticle = { file: string; title: string; html: string };
 // guides, dictionary skills and Activator walkthroughs — not an A–Z dump.
 // Every one of the 49 recovered pages lives in exactly one journey.
 const GUIDE_JOURNEYS: { key: string; title: string; blurb: string; files: string[] }[] = [
-  { key: "start", title: "Start here", blurb: "Find your way around the dictionary", files: ["index.htm", "introduction.htm", "menus.htm", "dictmenu.htm", "dictionarysearch.htm", "search.htm", "multimediasearch.htm", "subjectsearch.htm", "changingmode.htm", "switchingbetweenmodes.htm", "popupmode.htm", "popupmenu.htm", "settings.htm", "printing.htm"] },
+  { key: "start", title: "Start here", blurb: "Find your way around the dictionary", files: ["index.htm", "introduction.htm", "menus.htm", "dictmenu.htm", "dictionarysearch.htm", "search.htm", "multimediasearch.htm", "subjectsearch.htm", "changingmode.htm", "switchingbetweenmodes.htm", "popupmenu.htm", "settings.htm", "printing.htm"] },
   { key: "skills", title: "Dictionary skills", blurb: "Pronunciation, word sets, frequency and more", files: ["pronunciation.htm", "pronunciationsearch.htm", "syllables.htm", "wordsets.htm", "wordfrequency.htm", "wordorigins.htm", "wordoriginsearch.htm", "verbforms.htm", "examples.htm", "pictures.htm", "phrasebank.htm"] },
   { key: "exams", title: "Exam guides", blurb: "How each exam works, from the Exams Coach", files: ["examcoach.htm", "fce.htm", "cae.htm", "ielts.htm", "toeic.htm", "toefl.htm", "exercises.htm", "practice_test.htm", "hints_feedback.htm"] },
   { key: "writing", title: "Writing with the Activator", blurb: "Topic and Essay Activator walkthroughs", files: ["activatormenu.htm", "activateyourlanguage.htm", "howtheactivatorisorganized.htm", "puttingyourideasintowords.htm", "choosingtherightwordwhenwriting.htm", "choosetherightword.htm", "writinghandbook.htm", "grammarhandbook.htm", "commonerrors.htm"] },
-  { key: "about", title: "About this dictionary", blurb: "Credits, copyright and support", files: ["aboutmenu.htm", "acknowledgements.htm", "copyright.htm", "copy.htm", "technicalsupport.htm", "compatiblesoftwareapplications.htm"] },
+  { key: "about", title: "About this dictionary", blurb: "Credits, copyright and support", files: ["aboutmenu.htm", "acknowledgements.htm", "copyright.htm", "copy.htm", "technicalsupport.htm"] },
 ];
 // Authored reading order across all journeys: catalogue lists sort by this
 // rank, never by the backend's alphabetical listing.
@@ -1515,14 +1515,9 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
           />
         ) : (
           <>
-            {/* Provenance: the Guide transcribes the 2006 CD-ROM help verbatim,
-                so its steps name Windows UI ("Click OK", "blue toolbar") that
-                this Mac app doesn't have. One quiet line per article says so.
-                Once here covers every page, since each renders this branch. */}
-            <div className="mx-auto w-[calc(100%-2rem)] max-w-[720px] pt-4 mb-3">
-              <Text variant="small" color="tertiary">From the original 2006 CD-ROM guide. Some steps describe the Windows program.</Text>
-            </div>
-            <div key={article.file} className="p-6 md:p-8 mx-auto mb-4 w-[calc(100%-2rem)] max-w-[720px] bg-popover border border-separator rounded-2xl led-detail-in">
+            {/* Guide pages are Mac-accurate (rewritten 2026-09-15), so no
+                provenance banner is needed — the article sheet stands alone. */}
+            <div key={article.file} className="p-6 md:p-8 mx-auto mt-2 mb-4 w-[calc(100%-2rem)] max-w-[720px] bg-popover border border-separator rounded-2xl led-detail-in">
             {/* Elevated sheet (popover surface floats above the themed window
                 by design); panel's 40% alpha could never separate from the
                 translucent tab bar. */}
