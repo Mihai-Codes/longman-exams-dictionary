@@ -224,6 +224,52 @@ const SFX = {
   online: 1318.5, // current entry opened on ldoceonline.com
 };
 
+// One context for blips and pronunciation. A BufferSource can only start()
+// once — MDN: create a new node per play, reuse the AudioBuffer.
+// HTML Audio stacked a new element per click, so a second Audio (or a late
+// fetch for the previous word) overlapped and sounded like the wrong clip.
+function audioContext(): AudioContext | null {
+  try {
+    const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!sharedCtx || sharedCtx.state === "closed") {
+      // "interactive" latency: smallest output buffer, so a scheduled blip
+      // reaches the speakers in ~10ms rather than the default larger buffer.
+      sharedCtx = new Ctor({ latencyHint: "interactive" });
+      // Keep-alive: a zero-gain oscillator renders the output stream
+      // forever. Without an active stream, macOS puts the audio device to
+      // sleep after ~30s of silence and the first blip after idle waits
+      // for the device to wake (~300ms+) — the laggy-click symptom that
+      // resume() alone cannot fix. Silent rendering costs ~nothing.
+      const keepGain = sharedCtx.createGain();
+      keepGain.gain.value = 0;
+      const keepOsc = sharedCtx.createOscillator();
+      keepOsc.connect(keepGain).connect(sharedCtx.destination);
+      keepOsc.start();
+    }
+    return sharedCtx;
+  } catch {
+    return null;
+  }
+}
+
+function withRunningContext(fn: (ctx: AudioContext) => void): void {
+  const ctx = audioContext();
+  if (!ctx) return;
+  if (ctx.state === "running") {
+    fn(ctx);
+    return;
+  }
+  void ctx.resume().then(() => fn(ctx)).catch(() => { /* no audio device */ });
+}
+
+function startBuffer(ctx: AudioContext, buf: AudioBuffer): AudioBufferSourceNode {
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  src.start();
+  return src;
+}
+
 // Pre-rendered blip waveforms, one per (freq, dur, vol). The SFX set is
 // fixed and tiny, so each tone is rendered once and replayed with a bare
 // BufferSource.start() — the lightest possible node graph, no per-play
@@ -253,48 +299,95 @@ function startBlip(ctx: AudioContext, freq: number, dur: number, vol: number): v
     if (blipBuffers.size > 64) blipBuffers.clear();
     blipBuffers.set(key, buf);
   }
-  const src = ctx.createBufferSource();
-  src.buffer = buf;
-  src.connect(ctx.destination);
-  src.start();
+  startBuffer(ctx, buf);
 }
 
 function playBlip(freq = 880, dur = 0.1, vol = 0.04) {
-  try {
-    const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!sharedCtx || sharedCtx.state === "closed") {
-      // "interactive" latency: smallest output buffer, so a scheduled blip
-      // reaches the speakers in ~10ms rather than the default larger buffer.
-      sharedCtx = new Ctor({ latencyHint: "interactive" });
-      // Keep-alive: a zero-gain oscillator renders the output stream
-      // forever. Without an active stream, macOS puts the audio device to
-      // sleep after ~30s of silence and the first blip after idle waits
-      // for the device to wake (~300ms+) — the laggy-click symptom that
-      // resume() alone cannot fix. Silent rendering costs ~nothing.
-      const keepGain = sharedCtx.createGain();
-      keepGain.gain.value = 0;
-      const keepOsc = sharedCtx.createOscillator();
-      keepOsc.connect(keepGain).connect(sharedCtx.destination);
-      keepOsc.start();
-    }
-    const ctx = sharedCtx;
-    // Fast path: a running context starts the buffer synchronously, in this
-    // same task — no promise hop between the click and the scheduled sound.
-    // Slow path only for a suspended context (resume() is async; scheduling
-    // before it resolves is silently swallowed).
-    if (ctx.state === "running") {
-      startBlip(ctx, freq, dur, vol);
-    } else {
-      void ctx
-        .resume()
-        .then(() => startBlip(ctx, freq, dur, vol))
-        .catch(() => {
-          /* no audio device — stay silent */
-        });
-    }
-  } catch {
-    /* no audio device — stay silent */
+  withRunningContext((ctx) => startBlip(ctx, freq, dur, vol));
+}
+
+// Pronunciation: one source at a time. voiceGen invalidates in-flight fetches
+// so a late reply for word A cannot start after the user asked for word B.
+let voiceSource: AudioBufferSourceNode | null = null;
+let voiceGen = 0;
+const voiceBuffers = new Map<string, AudioBuffer>();
+
+function stopVoice(): void {
+  if (voiceSource) {
+    try { voiceSource.stop(); } catch { /* already ended */ }
+    try { voiceSource.disconnect(); } catch { /* already disconnected */ }
+    voiceSource = null;
   }
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
+  }
+}
+
+function bumpVoice(): void {
+  voiceGen += 1;
+  stopVoice();
+}
+
+function playDecoded(buf: AudioBuffer): void {
+  withRunningContext((ctx) => {
+    stopVoice();
+    const src = startBuffer(ctx, buf);
+    src.onended = () => { if (voiceSource === src) voiceSource = null; };
+    voiceSource = src;
+  });
+}
+
+function speakHeadword(hwd: string): boolean {
+  if (!("speechSynthesis" in window)) return false;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(hwd);
+  const voices = window.speechSynthesis.getVoices();
+  const gb =
+    voices.find((v) => v.lang === "en-GB" && /daniel/i.test(v.name)) ||
+    voices.find((v) => v.lang === "en-GB") ||
+    voices.find((v) => v.lang.startsWith("en-GB"));
+  if (gb) u.voice = gb;
+  u.lang = gb ? "en-GB" : "en-US";
+  u.rate = 0.9;
+  window.speechSynthesis.speak(u);
+  return true;
+}
+
+async function playPronunciation(hwd: string): Promise<"played" | "spoke" | "none" | "cancelled"> {
+  const gen = ++voiceGen;
+  stopVoice();
+  const key = hwd.toLowerCase();
+  const ctx = audioContext();
+  if (ctx && ctx.state !== "running") {
+    try { await ctx.resume(); } catch { /* stay silent until a later click */ }
+  }
+  if (gen !== voiceGen) return "cancelled";
+  let buf = voiceBuffers.get(key);
+  if (!buf && ctx) {
+    try {
+      const url = await invoke<string | null>("dictionary:audio", { hwd });
+      if (gen !== voiceGen) return "cancelled";
+      if (url) {
+        const raw = await (await fetch(url)).arrayBuffer();
+        if (gen !== voiceGen) return "cancelled";
+        buf = await ctx.decodeAudioData(raw.slice(0));
+        if (voiceBuffers.size > 64) {
+          const first = voiceBuffers.keys().next().value;
+          if (first !== undefined) voiceBuffers.delete(first);
+        }
+        voiceBuffers.set(key, buf);
+      }
+    } catch {
+      /* fall through to speech */
+    }
+  }
+  if (gen !== voiceGen) return "cancelled";
+  if (buf) {
+    playDecoded(buf);
+    return "played";
+  }
+  if (speakHeadword(hwd)) return "spoke";
+  return "none";
 }
 
 function SearchInput({
@@ -510,6 +603,7 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
   useEffect(() => {
     setShowImage(false);
     setImgSrc(undefined);
+    bumpVoice();
   }, [hwd]);
 
   useEffect(() => {
@@ -610,33 +704,13 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
                 variant="transparent"
                 className="active:scale-95 transition-transform"
                 onClick={() => {
+                  const word = entry.hwd;
                   void (async () => {
-                    try {
-                      const url = await invoke<string | null>("dictionary:audio", { hwd: entry.hwd });
-                      if (url) {
-                        await new Audio(url).play();
-                        toast.success(`Playing “${entry.hwd}”`);
-                        return;
-                      }
-                    } catch {
-                      /* fall through to speech synthesis */
-                    }
-                    if ("speechSynthesis" in window) {
-                      window.speechSynthesis.cancel();
-                      const u = new SpeechSynthesisUtterance(entry.hwd);
-                      const voices = window.speechSynthesis.getVoices();
-                      const gb =
-                        voices.find((v) => v.lang === "en-GB" && /daniel/i.test(v.name)) ||
-                        voices.find((v) => v.lang === "en-GB") ||
-                        voices.find((v) => v.lang.startsWith("en-GB"));
-                      if (gb) u.voice = gb;
-                      u.lang = gb ? "en-GB" : "en-US";
-                      u.rate = 0.9;
-                      window.speechSynthesis.speak(u);
-                      toast.success(`Speaking “${entry.hwd}”`);
-                    } else {
-                      toast.error("Speech synthesis not available");
-                    }
+                    const result = await playPronunciation(word);
+                    if (result === "played") toast.success(`Playing “${word}”`);
+                    else if (result === "spoke") toast.success(`Speaking “${word}”`);
+                    else if (result === "none") toast.error("Speech synthesis not available");
+                    /* cancelled: a newer click or word change already owns the speaker */
                   })();
                 }}
               >
