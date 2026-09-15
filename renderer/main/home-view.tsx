@@ -212,6 +212,41 @@ const SFX = {
   online: 1318.5, // current entry opened on ldoceonline.com
 };
 
+// Pre-rendered blip waveforms, one per (freq, dur, vol). The SFX set is
+// fixed and tiny, so each tone is rendered once and replayed with a bare
+// BufferSource.start() — the lightest possible node graph, no per-play
+// OscillatorNode/GainNode construction and no envelope automation.
+const blipBuffers = new Map<string, AudioBuffer>();
+
+// Matches the old oscillator envelope: gain vol at t=0, exponential ramp to
+// 0.0001 at t=dur, then a 30ms tail to silence (no click at the cutoff).
+function renderBlip(ctx: AudioContext, freq: number, dur: number, vol: number): AudioBuffer {
+  const sr = ctx.sampleRate;
+  const len = Math.ceil(sr * (dur + 0.03));
+  const buf = ctx.createBuffer(1, len, sr);
+  const data = buf.getChannelData(0);
+  const decay = Math.pow(0.0001 / vol, 1 / dur); // per-second ramp factor
+  for (let i = 0; i < len; i++) {
+    const t = i / sr;
+    data[i] = Math.sin(2 * Math.PI * freq * t) * vol * Math.pow(decay, t);
+  }
+  return buf;
+}
+
+function startBlip(ctx: AudioContext, freq: number, dur: number, vol: number): void {
+  const key = `${freq}/${dur}/${vol}`;
+  let buf = blipBuffers.get(key);
+  if (!buf) {
+    buf = renderBlip(ctx, freq, dur, vol);
+    if (blipBuffers.size > 64) blipBuffers.clear();
+    blipBuffers.set(key, buf);
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  src.start();
+}
+
 function playBlip(freq = 880, dur = 0.1, vol = 0.04) {
   try {
     const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -231,22 +266,20 @@ function playBlip(freq = 880, dur = 0.1, vol = 0.04) {
       keepOsc.start();
     }
     const ctx = sharedCtx;
-    // Browsers can still suspend an AudioContext; resume() is async and an
-    // oscillator scheduled before it resolves is silently swallowed. Await
-    // the resume before scheduling; on an already-running context the
-    // promise resolves immediately, so steady-state blips stay instant.
-    void (async () => {
-      if (ctx.state !== "running") await ctx.resume();
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = "sine";
-      o.frequency.value = freq;
-      g.gain.value = vol;
-      o.connect(g).connect(ctx.destination);
-      o.start();
-      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
-      o.stop(ctx.currentTime + dur + 0.03);
-    })();
+    // Fast path: a running context starts the buffer synchronously, in this
+    // same task — no promise hop between the click and the scheduled sound.
+    // Slow path only for a suspended context (resume() is async; scheduling
+    // before it resolves is silently swallowed).
+    if (ctx.state === "running") {
+      startBlip(ctx, freq, dur, vol);
+    } else {
+      void ctx
+        .resume()
+        .then(() => startBlip(ctx, freq, dur, vol))
+        .catch(() => {
+          /* no audio device — stay silent */
+        });
+    }
   } catch {
     /* no audio device — stay silent */
   }
