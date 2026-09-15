@@ -383,18 +383,7 @@ export const dictionaryHandlers = {
   stats: async () => {
     const d = openDb();
     const total = d ? (d.prepare("SELECT count(*) AS n FROM entries").get() as { n: number }).n : loadJson().length;
-    return {
-      totalEntries: total,
-      source: "Longman Exams Dictionary (2006) — For Upper Intermediate – Advanced Learners",
-      publisher: "Pearson Longman",
-      features: [
-        "212,000 words, phrases and meanings",
-        "160,000 examples",
-        "10,000 synonyms/antonyms/word families",
-        "Longman Exams Coach (35h interactive exercises)",
-        "Topic Activator & Essay Activator",
-      ],
-    };
+    return { totalEntries: total };
   },
 
   image: async (params: { id: string }): Promise<string | null> => {
@@ -478,10 +467,10 @@ export const dictionaryHandlers = {
       html = html.replace(/<link[^>]*>/gi, "");
       // Drop the redundant leading title block every page opens with: an
       // <h3 class="helphead"> page title plus its <p class="helphead">
-      // "Guide / Exercises" nav paragraphs. The Guide already shows the
-      // provenance line and its own navigation, so this repeated banner is
-      // both duplication and the visible gap above the article text. Leading
-      // whitespace-only paragraphs/anchors are removed with it.
+      // "Guide / Exercises" nav paragraphs. The Guide already shows its own
+      // navigation, so this repeated heading is both duplication and the
+      // visible gap above the article text. Leading whitespace-only
+      // paragraphs/anchors are removed with it.
       html = html
         .replace(/^\s*<h3[^>]*class="helphead"[^>]*>[\s\S]*?<\/h3>/i, "")
         .replace(/^(?:\s|<p[^>]*class="helphead"[^>]*>[\s\S]*?<\/p>|<p[^>]*>\s*(?:&nbsp;|<a[^>]*name="[^"]*"\s*\/?>)?\s*<\/p>)+/i, "");

@@ -55,11 +55,6 @@ type StudyData = {
 const EMPTY_STUDY: StudyData = { synonyms: [], phrases: [], corpus: [], verb: null, mistakes: [] };
 type Stats = {
   totalEntries: number;
-  source: string;
-  publisher: string;
-  features: string[];
-  volume: string;
-  note: string;
 };
 
 type Gamification = { count: number; lastDate: string; xp: number; level: number; seen: string[] };

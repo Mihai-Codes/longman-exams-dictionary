@@ -23,14 +23,27 @@ const src = readFileSync("renderer/main/home-view.tsx", "utf8");
 const journeys = [...src.matchAll(/files: \[(.*?)\]/g)].flatMap((m) =>
   [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1].toLowerCase()));
 const disk = readdirSync("data/help").filter((f) => f.endsWith(".htm")).map((f) => f.toLowerCase());
-check("47 help pages listed once each",
-  journeys.length === 47 && new Set(journeys).size === 47 && disk.every((f) => journeys.includes(f)));
+check("every help page listed once each",
+  journeys.length === disk.length && new Set(journeys).size === disk.length &&
+  disk.every((f) => journeys.includes(f)) && journeys.every((f) => disk.includes(f)));
+check("no leftover CD-ROM walkthroughs",
+  disk.every((f) => !/What follows describes/i.test(readFileSync(`data/help/${f}`, "utf8"))));
+const broken = [];
 for (const f of disk) {
   const html = readFileSync(`data/help/${f}`, "utf8");
   const heads = [...html.matchAll(/<(h1|h2|h3)[^>]*>(.*?)<\/\1>/gis)].map((m) => m[2].replace(/<[^>]+>/g, "").trim());
   if (heads.length !== new Set(heads).size) { check(`no duplicate headings in ${f}`, false); break; }
+  for (const m of html.matchAll(/href="([^"]+)"/gi)) {
+    const href = m[1];
+    if (/^(https?:|mailto:|coach:|#)/i.test(href)) continue;
+    const target = href.split("#")[0];
+    if (target && /\.html?$/i.test(target) && !disk.includes(target.toLowerCase())) {
+      broken.push(`${f} -> ${target}`);
+    }
+  }
 }
 check("no duplicate headings in help pages", !failures.some((f) => f.startsWith("no duplicate headings")));
+check("help links resolve", broken.length === 0);
 
 // 3. Branding + style red lines in source
 check('no blue badges', !src.includes('color="blue"') && !src.includes("? \"blue\""));

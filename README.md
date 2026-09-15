@@ -21,7 +21,7 @@ Unofficial native macOS port of the classic **Longman Exams Dictionary CD-ROM (2
 
 - **Dictionary** — 42,380 headwords with pronunciations, verb forms, collocations and corpus examples; Top 1000 exam-priority markers plus Longman Communication 3000 frequency bands (S1–S3 spoken, W1–W3 written); debounced instant search with A–Z paging
 - **Exams Coach** — 762 exam topics with related-word glosses, exam-guide chips and study streaks with XP
-- **Guide** — the full 49-page study handbook as five readable journeys (dictionary skills, exam formats, academic writing)
+- **Guide** — the study handbook as five readable journeys (dictionary skills, exam formats, academic writing)
 - **Common mistakes** — wrong vs right minimal pairs with plain explanations and tappable cross-reference jumps
 - **Fully offline** — SQLite corpus, pronunciation audio and illustrations all on-device; light and dark mode
 
@@ -43,7 +43,7 @@ sources/
 ├── renderer/main/home-view.tsx  # all three tabs
 ├── renderer/styles.css          # Pearson/Longman brand theme
 ├── data/led_full.sqlite         # recovered corpus (Git LFS)
-├── data/help/*.htm              # 49 guide pages
+├── data/help/*.htm              # guide pages
 └── data/images/ data/audio/     # illustrations + pronunciation
 ```
 
@@ -59,7 +59,7 @@ bash glaze-node.sh repackage
 
 ## CI
 
-Hosted CI (`verify`) runs on every push: install, 11 repo invariants,
+Hosted CI (`verify`) runs on every push: install, repo invariants,
 full `tsc` against committed SDK type stubs, and esbuild bundle-ability
 for both processes. The Glaze linker exists only inside the desktop app,
 so native builds stay local — or opt in: install a self-hosted runner on
