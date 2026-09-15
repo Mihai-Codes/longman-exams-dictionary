@@ -1145,21 +1145,23 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
 type HelpPage = { file: string; title: string };
 type HelpArticle = { file: string; title: string; html: string };
 
-// Guided journeys mirroring how the CD itself organized its help: exam
-// guides, dictionary skills and Activator walkthroughs — not an A–Z dump.
-// Every one of the 49 recovered pages lives in exactly one journey.
+// Guided journeys — not an A–Z dump. Every help page lives in exactly
+// one journey. Order is reading order (parent before child, related pages
+// together); GUIDE_RANK and the side panel both walk this list.
 const GUIDE_JOURNEYS: { key: string; title: string; blurb: string; files: string[] }[] = [
-  { key: "start", title: "Start here", blurb: "Find your way around the dictionary", files: ["index.htm", "introduction.htm", "menus.htm", "dictmenu.htm", "dictionarysearch.htm", "search.htm", "multimediasearch.htm", "subjectsearch.htm", "changingmode.htm", "switchingbetweenmodes.htm", "popupmenu.htm", "settings.htm", "printing.htm"] },
-  { key: "skills", title: "Dictionary skills", blurb: "Pronunciation, word sets, frequency and more", files: ["pronunciation.htm", "pronunciationsearch.htm", "syllables.htm", "wordsets.htm", "wordfrequency.htm", "wordorigins.htm", "wordoriginsearch.htm", "verbforms.htm", "examples.htm", "pictures.htm", "phrasebank.htm"] },
+  { key: "start", title: "Start here", blurb: "Find your way around the dictionary", files: ["index.htm", "introduction.htm", "dictmenu.htm", "menus.htm", "search.htm", "dictionarysearch.htm", "multimediasearch.htm", "subjectsearch.htm", "settings.htm", "copy.htm", "printing.htm", "changingmode.htm", "switchingbetweenmodes.htm", "popupmenu.htm"] },
+  { key: "skills", title: "Dictionary skills", blurb: "Pronunciation, word sets, frequency and more", files: ["pronunciation.htm", "pronunciationsearch.htm", "syllables.htm", "wordsets.htm", "wordfrequency.htm", "wordorigins.htm", "wordoriginsearch.htm", "verbforms.htm", "examples.htm", "phrasebank.htm", "pictures.htm"] },
   { key: "exams", title: "Exam guides", blurb: "How each exam works, from the Exams Coach", files: ["examcoach.htm", "fce.htm", "cae.htm", "ielts.htm", "toeic.htm", "toefl.htm", "exercises.htm", "practice_test.htm", "hints_feedback.htm"] },
-  { key: "writing", title: "Writing with the Activator", blurb: "Topic and Essay Activator walkthroughs", files: ["activatormenu.htm", "activateyourlanguage.htm", "howtheactivatorisorganized.htm", "puttingyourideasintowords.htm", "choosingtherightwordwhenwriting.htm", "choosetherightword.htm", "writinghandbook.htm", "grammarhandbook.htm", "commonerrors.htm"] },
-  { key: "about", title: "About this dictionary", blurb: "Credits, copyright and support", files: ["aboutmenu.htm", "acknowledgements.htm", "copyright.htm", "copy.htm", "technicalsupport.htm"] },
+  { key: "writing", title: "Writing with the Activator", blurb: "Choosing a precise word when writing", files: ["activatormenu.htm", "howtheactivatorisorganized.htm", "puttingyourideasintowords.htm", "choosingtherightwordwhenwriting.htm", "choosetherightword.htm", "activateyourlanguage.htm", "writinghandbook.htm", "grammarhandbook.htm", "commonerrors.htm"] },
+  { key: "about", title: "About this dictionary", blurb: "Credits, copyright and support", files: ["aboutmenu.htm", "copyright.htm", "acknowledgements.htm", "technicalsupport.htm"] },
 ];
 // Authored reading order across all journeys: catalogue lists sort by this
 // rank, never by the backend's alphabetical listing.
 const GUIDE_RANK = new Map<string, number>(
   GUIDE_JOURNEYS.flatMap((j) => j.files).map((f, i) => [f.toLowerCase(), i]),
 );
+const inFiles = (files: readonly string[], file: string) =>
+  files.some((f) => f.toLowerCase() === file.toLowerCase());
 
 // User guide recovered from led_help.chm on the disc. Mirrors CoachView:
 // filterable list on the left, article on the right, honest states throughout.
@@ -1206,7 +1208,7 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
     playBlip(SFX.guideStep, 0.08);
     const p = pages.find((pg) => pg.file === nav.hist[i]);
     if (p) {
-      const j = GUIDE_JOURNEYS.find((gj) => gj.files.includes(p.file.toLowerCase()));
+      const j = GUIDE_JOURNEYS.find((gj) => inFiles(gj.files, p.file));
       if (j) setJourney(j.key);
       setQuery("");
       setSelected(p);
@@ -1263,7 +1265,7 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
         const r = await invoke<HelpPage[]>("dictionary:helpList");
         setPages(r ?? []);
         if (r && r.length) {
-          openPage(r.find((p) => p.file === "index.htm") ?? r[0]);
+          openPage(r.find((p) => p.file.toLowerCase() === "index.htm") ?? r[0]);
           // List.Item scrolls a newly-selected (late) page into view on
           // mount, stranding early rows under the translucent toolbar.
           // Reset after paint — two frames, invisible to the user.
@@ -1296,7 +1298,7 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
     if (!requestFile || pages.length === 0) return;
     const hit = pages.find((p) => p.file.toLowerCase() === requestFile.toLowerCase());
     if (hit) {
-      const j = GUIDE_JOURNEYS.find((gj) => gj.files.includes(hit.file.toLowerCase()));
+      const j = GUIDE_JOURNEYS.find((gj) => inFiles(gj.files, hit.file));
       if (j) setJourney(j.key);
       setQuery("");
       openPage(hit);
@@ -1325,14 +1327,15 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
   const journeyFiles = journey === "all" ? null : GUIDE_JOURNEYS.find((j) => j.key === journey)?.files ?? [];
   // Catalogue ranking: the backend lists pages alphabetically, but each
   // menu must read in its journey's authored order (Start here walks
-  // contents to printing). One rank map, applied to every list below —
+  // contents through search, then settings/copy, then the old window-mode
+  // notes). One rank map, applied to every list below —
   // sections, single journeys, and search hits alike.
   const rankOf = (file: string) => {
     const i = GUIDE_RANK.get(file.toLowerCase());
     return i === undefined ? Number.MAX_SAFE_INTEGER : i;
   };
   const byRank = (a: HelpPage, b: HelpPage) => rankOf(a.file) - rankOf(b.file) || a.title.localeCompare(b.title);
-  const inJourney = (journeyFiles ? pages.filter((p) => journeyFiles.includes(p.file.toLowerCase())) : pages).slice().sort(byRank);
+  const inJourney = (journeyFiles ? pages.filter((p) => inFiles(journeyFiles, p.file)) : pages).slice().sort(byRank);
   const journeyBlurb = journey === "all" ? undefined : GUIDE_JOURNEYS.find((j) => j.key === journey)?.blurb;
   const filtered = q
     ? inJourney.filter((p) => p.title.toLowerCase().includes(q) || p.file.toLowerCase().includes(q))
@@ -1447,7 +1450,7 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
           ) : showSections ? (
             GUIDE_JOURNEYS.map((j) => {
               const items = pages
-                .filter((p) => j.files.includes(p.file.toLowerCase()))
+                .filter((p) => inFiles(j.files, p.file))
                 .slice()
                 .sort(byRank);
               if (items.length === 0) return null;

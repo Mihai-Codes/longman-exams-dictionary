@@ -45,6 +45,32 @@ for (const f of disk) {
 check("no duplicate headings in help pages", !failures.some((f) => f.startsWith("no duplicate headings")));
 check("help links resolve", broken.length === 0);
 
+// Parent before child, related pages together — the side panel walks this
+// flattened order. Relative pairs (not the full list) so journeys can grow.
+const idx = (f) => journeys.indexOf(f);
+const before = (a, b) => idx(a) >= 0 && idx(b) >= 0 && idx(a) < idx(b);
+check("search before its specialized searches",
+  before("search.htm", "dictionarysearch.htm") &&
+  before("search.htm", "multimediasearch.htm") &&
+  before("search.htm", "subjectsearch.htm"));
+check("pronunciation before pronunciation search", before("pronunciation.htm", "pronunciationsearch.htm"));
+check("word origins before origin search", before("wordorigins.htm", "wordoriginsearch.htm"));
+check("examples before phrase bank", before("examples.htm", "phrasebank.htm"));
+check("exam coach before exam guides", before("examcoach.htm", "fce.htm") && before("fce.htm", "exercises.htm"));
+check("activator hub before its walkthroughs",
+  before("activatormenu.htm", "howtheactivatorisorganized.htm") &&
+  before("howtheactivatorisorganized.htm", "puttingyourideasintowords.htm") &&
+  before("puttingyourideasintowords.htm", "choosingtherightwordwhenwriting.htm"));
+check("copy sits with printing", Math.abs(idx("copy.htm") - idx("printing.htm")) === 1);
+check("contents and introduction open the catalogue", idx("index.htm") === 0 && idx("introduction.htm") === 1);
+
+const cdRomTitles = disk.filter((f) => {
+  const t = /<title>(.*?)<\/title>/is.exec(readFileSync(`data/help/${f}`, "utf8"));
+  const title = t ? t[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "";
+  return /about menu|help contents|web\/email|LONGMAN Writing Assistant|Exams Coach help/i.test(title);
+});
+check("no leftover CD-ROM catalogue titles", cdRomTitles.length === 0);
+
 // 3. Branding + style red lines in source
 check('no blue badges', !src.includes('color="blue"') && !src.includes("? \"blue\""));
 check("no retired brand hex", !/007FA3|003057/.test(src));

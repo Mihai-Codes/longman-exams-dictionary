@@ -109,14 +109,11 @@ function safeHelpFile(file: string): string | null {
 }
 
 function helpTitle(html: string, fallback: string): string {
+  // Catalogue names come from <title> (succinct list label). The article
+  // <h3> can be longer; both helpList and helpPage go through here.
   const m = /<title>(.*?)<\/title>/is.exec(html);
-  const t = m ? m[1].replace(/<[^>]+>/g, "").trim() : "";
-  // Some CHM pages use the filename as their <title> — fall back to the
-  // basename so the catalogue never shows "popupmenu.htm".
+  const t = m ? m[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim() : "";
   const raw = t && !/\.(htm|html)$/i.test(t) ? t : fallback.replace(/\.(htm|html)$/i, "");
-  // CD titles are inconsistent ("about menu", "CAE") — sentence-case the
-  // first letter so the list reads as one catalogue. Single source: both
-  // helpList and helpPage go through here.
   return raw.length > 1 ? raw[0].toUpperCase() + raw.slice(1) : raw.toUpperCase();
 }
 
