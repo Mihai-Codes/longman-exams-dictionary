@@ -425,8 +425,8 @@ function BulletDot({ size }: { size: "large" | "small" }) {
 function BulletCard({ children }: { children: ReactNode }) {
   return (
     <div className="flex items-start gap-2 rounded-lg bg-well/60 border border-separator/50 px-3 py-2.5">
-      <BulletDot size="small" />
-      <Text variant="small" className="italic leading-relaxed">
+      <BulletDot size="large" />
+      <Text variant="large" className="italic leading-relaxed">
         {children}
       </Text>
     </div>
@@ -652,7 +652,7 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
             )}
             {cardCollocs.slice(0, 4).map((c, i) => (
               <div key={i} className="flex gap-2.5 rounded-lg bg-well/60 border border-separator/50 px-3 py-2.5">
-                <Text variant="small" className="leading-relaxed">
+                <Text variant="large" className="leading-relaxed">
                   {c}
                 </Text>
               </div>
@@ -691,8 +691,8 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
                 {m.bad && (
                   <div className="flex items-start gap-2">
                     <CircleXIcon className="size-4 shrink-0 mt-0.5 text-support-red" />
-                    <Text variant="small" color="secondary" className="leading-relaxed">
-                      <Text as="span" variant="small-strong" color="red">Don&apos;t say: </Text>
+                    <Text variant="large" color="secondary" className="leading-relaxed">
+                      <Text as="span" variant="large-strong" color="red">Don&apos;t say: </Text>
                       <span className="line-through">{m.bad}</span>
                     </Text>
                   </div>
@@ -700,8 +700,8 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
                 {m.good && (
                   <div className="flex items-start gap-2">
                     <CheckIcon className="size-4 shrink-0 mt-0.5 text-support-green" />
-                    <Text variant="small" className="leading-relaxed">
-                      <Text as="span" variant="small-strong" color="green">Say: </Text>
+                    <Text variant="large" className="leading-relaxed">
+                      <Text as="span" variant="large-strong" color="green">Say: </Text>
                       {m.good}
                     </Text>
                   </div>
@@ -725,7 +725,7 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
                         </Text>
                       ) : null}
                       {quotes.map((q, qi) => (
-                        <Text key={qi} variant="small" color="secondary" className="italic leading-relaxed block pl-4">
+                        <Text key={qi} variant="large" color="secondary" className="italic leading-relaxed block pl-4">
                           {q}
                         </Text>
                       ))}
@@ -776,7 +776,7 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
             {synonyms.slice(0, 8).map((s, i) => (
               <div key={i} className="flex gap-2.5 rounded-lg bg-well/60 border border-separator/50 px-3 py-2.5">
                 <Badge color="secondary" className="shrink-0 self-start">{s.assoc}</Badge>
-                <Text variant="small" color="secondary" className="leading-relaxed">
+                <Text variant="large" color="secondary" className="leading-relaxed">
                   {s.gloss}
                 </Text>
               </div>
@@ -1465,7 +1465,7 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
                 so its steps name Windows UI ("Click OK", "blue toolbar") that
                 this Mac app doesn't have. One quiet line per article says so.
                 Once here covers every page, since each renders this branch. */}
-            <div className="mx-auto w-[calc(100%-2rem)] max-w-[720px] pt-4">
+            <div className="mx-auto w-[calc(100%-2rem)] max-w-[720px] pt-4 mb-3">
               <Text variant="small" color="tertiary">From the original 2006 CD-ROM guide. Some steps describe the Windows program.</Text>
             </div>
             <div key={article.file} className="p-6 md:p-8 mx-auto mb-4 w-[calc(100%-2rem)] max-w-[720px] bg-popover border border-separator rounded-2xl led-detail-in">
