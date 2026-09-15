@@ -42,7 +42,7 @@ import {
 } from "lucide-react";
 
 type SearchResult = { id: number; hwd: string; pron: string; pos: string; def: string };
-type Entry = { hwd: string; pron: string; pos: string; def: string; html: string; previewId: string | null; top1000: boolean };
+type Entry = { hwd: string; pron: string; pos: string; def: string; html: string; previewId: string | null; top1000: boolean; freqS: string | null; freqW: string | null };
 // Everything the body AND the Study panel need for one headword — fetched
 // once in HomeView (single source) instead of twice in two places.
 type StudyData = {
@@ -61,26 +61,6 @@ type Stats = {
   volume: string;
   note: string;
 };
-
-function cleanHtml(html: string): string {
-  return html
-    .replace(/<\?SK[^?]*\?>/g, "")
-    // CD wraps the inflected headword inside examples in <xblphrsensehwd>
-    // (click-to-select behavior). Unwrap to keep the word, or sentences
-    // read "They their attempt...". All other xbl tags are toolbar/behavior
-    // buttons with no readable text, so those are still stripped below.
-    .replace(/<xblphrsensehwd[^>]*>(.*?)<\/xbl[^>]*>/gs, "$1")
-    .replace(/<xbl[^>]*>.*?<\/xbl[^>]*>/gs, "")
-    .replace(/<xbl[^>]*\/>/g, "")
-    .replace(/chrome:\/\/led\/[^"]*/g, "")
-    .replace(/src="[^"]*btnflcplier\.gif[^"]*"/g, `class="hidden"`)
-    .replace(/<fthwd>/g, `<span class="font-semibold text-[1.25em] tracking-tight">`)
-    .replace(/<\/fthwd>/g, `</span>`)
-    .replace(/<ftdef>/g, `<span>`)
-    .replace(/<\/ftdef>/g, `</span>`)
-    .replace(/<ftexa>/g, `<span>`)
-    .replace(/<\/ftexa>/g, `</span>`);
-}
 
 type Gamification = { count: number; lastDate: string; xp: number; level: number; seen: string[] };
 
@@ -287,7 +267,7 @@ function SearchInput({
         <div className="absolute left-8 right-8 top-1/2 -translate-y-1/2 pointer-events-none flex items-center h-8 text-small overflow-hidden">
           <span className="invisible">{value}</span>
           <span className="text-quaternary">{ghost}</span>
-          <span className="ml-1 hidden sm:inline-flex items-center gap-0.5 text-[10px] text-tertiary border border-separator rounded px-1 py-0.5 bg-well">Tab</span>
+          <span className="ml-1 hidden sm:inline-flex items-center gap-0.5 text-mini text-tertiary border border-separator rounded px-1 py-0.5 bg-well">Tab</span>
         </div>
       )}
       <Input
@@ -410,7 +390,7 @@ function DictionaryTabs({
           >
             <ZapIcon className={["size-4", motionIsOn ? "text-amber-400" : "text-foreground/50"].join(" ")} />
             Motion
-            <span className={["inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", motionIsOn ? "bg-amber-400/15 text-amber-400" : "bg-foreground/10 text-foreground/60"].join(" ")}>
+            <span className={["inline-flex items-center rounded-full px-1.5 py-0.5 text-mini font-semibold uppercase tracking-wide", motionIsOn ? "bg-amber-400/15 text-amber-400" : "bg-foreground/10 text-foreground/60"].join(" ")}>
               {motionIsOn ? "On" : "Auto"}
             </span>
           </Button>
@@ -454,11 +434,9 @@ function BulletCard({ children }: { children: ReactNode }) {
 }
 
 function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, onLookup }: { entry: Entry | null; saved: boolean; onToggleSave: () => void; study: StudyData; streak: { count: number; level: number; xp: number; seen: string[] }; showConfetti: boolean; onLookup: (hwd: string) => void }) {
-  if (!entry) {
-    return null;
-  }
-
-  const cleaned = useMemo(() => cleanHtml(entry.html), [entry.html]);
+  // Hooks first, early return last: every hook must run on every render, so
+  // none may sit behind `if (!entry) return null`. All are null-safe below.
+  const hwd = entry?.hwd;
   const [showImage, setShowImage] = useState(false);
   // undefined = loading, null = no illustration, string = ready
   const [imgSrc, setImgSrc] = useState<string | null | undefined>(undefined);
@@ -466,17 +444,10 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
   useEffect(() => {
     setShowImage(false);
     setImgSrc(undefined);
-  }, [entry.hwd]);
-
-  // Study data arrives from HomeView (fetched once per headword for the
-  // body sections) — no second fetch here.
-  const { synonyms, phrases, corpus, verb, mistakes } = study;
-  // Word patterns for the Study notes card (entry HTML is present from
-  // the start, so this is static — plain const, no extra fetch).
-  const cardCollocs = extractCollocs(entry.html);
+  }, [hwd]);
 
   useEffect(() => {
-    if (!showImage || !entry.previewId || imgSrc !== undefined) return;
+    if (!entry || !showImage || !entry.previewId || imgSrc !== undefined) return;
     void (async () => {
       try {
         const url = await invoke<string | null>("dictionary:image", { id: entry.previewId });
@@ -485,13 +456,14 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
         setImgSrc(null);
       }
     })();
-  }, [showImage, entry.previewId, imgSrc]);
+  }, [entry, showImage, imgSrc]);
 
   const examples = useMemo(() => {
     const re = /<div[^>]*class="EXAMPLE"[^>]*>(.*?)<\/div>/gs;
     const outs: string[] = [];
+    if (!entry) return outs;
     let m: RegExpExecArray | null;
-    const tmp = cleaned;
+    const tmp = entry.html;
     while ((m = re.exec(tmp)) !== null) {
       let txt = m[1].replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").trim();
       // Strip leading square/circle bullets from original LED (▪) so we only show one
@@ -501,7 +473,18 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
       if (outs.length >= 5) break;
     }
     return outs;
-  }, [cleaned]);
+  }, [entry]);
+
+  if (!entry) {
+    return null;
+  }
+
+  // Study data arrives from HomeView (fetched once per headword for the
+  // body sections) — no second fetch here.
+  const { synonyms, phrases, corpus, verb, mistakes } = study;
+  // Word patterns for the Study notes card (entry HTML is present from
+  // the start, so this is static — plain const, no extra fetch).
+  const cardCollocs = extractCollocs(entry.html);
 
   return (
     <div className="flex flex-col gap-4 p-6 max-w-[720px] mx-auto w-full led-entry-html">
@@ -527,6 +510,12 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
                 </Badge>
               )}
               {entry.top1000 && <Badge color="secondary">Top 1000</Badge>}
+              {entry.freqS && (
+                <Badge color="secondary" title={`Top ${Number(entry.freqS) * 1000} most frequent in spoken English`}>S{entry.freqS}</Badge>
+              )}
+              {entry.freqW && (
+                <Badge color="secondary" title={`Top ${Number(entry.freqW) * 1000} most frequent in written English`}>W{entry.freqW}</Badge>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -1476,13 +1465,13 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
             <div className="mx-auto w-[calc(100%-2rem)] max-w-[720px] pt-4">
               <Text variant="small" color="tertiary">From the original 2006 CD-ROM guide. Some steps describe the Windows program.</Text>
             </div>
-            <div key={article.file} className="p-6 md:p-8 mx-auto mt-2 mb-4 w-[calc(100%-2rem)] max-w-[720px] bg-popover border border-separator rounded-2xl led-detail-in">
+            <div key={article.file} className="p-6 md:p-8 mx-auto mb-4 w-[calc(100%-2rem)] max-w-[720px] bg-popover border border-separator rounded-2xl led-detail-in">
             {/* Elevated sheet (popover surface floats above the themed window
                 by design); panel's 40% alpha could never separate from the
                 translucent tab bar. */}
             <div
               ref={articleRef}
-              className="led-guide-html [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:mt-5 [&_h3]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-1 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:my-2 [&_li]:my-1 [&_li]:text-[13px] [&_li]:leading-relaxed [&_p]:my-2 [&_p]:text-[13px] [&_p]:leading-relaxed [&_p]:text-justify [&_p]:text-indent-[1.25em] [&_a]:underline [&_a]:cursor-pointer [&_img]:rounded-lg [&_img]:my-3 [&_img]:max-w-full"
+              className="led-guide-html [&_h3]:text-[var(--text-heading)] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:mt-5 [&_h3]:mb-2 [&_h2]:text-[var(--text-body)] [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-1 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:my-2 [&_li]:my-1 [&_li]:text-[var(--text-body)] [&_li]:leading-[var(--text-body-leading)] [&_p]:my-2 [&_p]:text-[var(--text-body)] [&_p]:leading-[var(--text-body-leading)] [&_p]:text-justify [&_p]:text-indent-[1.25em] [&_a]:underline [&_a]:cursor-pointer [&_img]:rounded-lg [&_img]:my-3 [&_img]:max-w-full"
               dangerouslySetInnerHTML={{ __html: article.html }}
               onClick={(e) => {
                 const a = (e.target as HTMLElement).closest?.("a[href]");

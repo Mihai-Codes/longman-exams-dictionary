@@ -8,10 +8,85 @@
 @source "./**/*.{ts,tsx}";
 @source not "./preload.ts";
 @source not "./dev/**/*";
+/* CD content classes added dynamically via cleanHtml() — Tailwind can't see
+   these in source files, so declare them here to prevent purging. */
+@source "./**/*.css";
+@utility led-entry-html {
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--text-body-leading);
+}
+@utility led-guide-html {
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--text-body-leading);
+}
 
 /* Two-finger horizontal swipes belong to in-app history (Guide), never to
    the browser's back/forward gesture. */
 html, body { overscroll-behavior-x: none; }
+
+/* Unified text scale — one semantic level per role, no raw pixel overrides.
+   Quantic/Quantum design system pattern: each token maps to a single
+   consistent size, weight, and line-height across the entire surface. */
+:root {
+  --text-body: 14px;
+  --text-body-leading: 1.55;
+  --text-small: 12px;
+  --text-small-leading: 1.4;
+  --text-mini: 10px;
+  --text-mini-leading: 1.3;
+  --text-large: 16px;
+  --text-large-leading: 1.5;
+  --text-heading: 18px;
+  --text-heading-leading: 1.35;
+}
+
+/* Neutralize CD's `Times New Roman` hardcodes on raw content surfaces.
+   `!important` is required to beat CD inline `style="font-family:…"`.
+   Only the family is forced — size, weight, and style are left to the
+   per-element rules below so headings, definitions, and examples keep a
+   real typographic hierarchy instead of one flattened size. */
+.led-entry-html,
+.led-guide-html,
+.led-entry-html *,
+.led-guide-html * {
+  font-family: var(--font-sans) !important;
+}
+
+/* Guide headings: CHM pages use <h2>/<h3> with hardcoded sizes. Scale them
+   relative to the unified body token instead of browser defaults. */
+.led-guide-html h2 {
+  font-size: var(--text-large) !important;
+  font-weight: 600 !important;
+  line-height: var(--text-large-leading) !important;
+}
+.led-guide-html h3 {
+  font-size: var(--text-body) !important;
+  font-weight: 600 !important;
+  line-height: var(--text-body-leading) !important;
+}
+
+/* Lists, paragraphs, blockquotes: all ride the unified body size. */
+.led-guide-html p,
+.led-guide-html li,
+.led-guide-html td,
+.led-guide-html th,
+.led-guide-html blockquote,
+.led-guide-html code,
+.led-guide-html kbd {
+  font-size: var(--text-body) !important;
+  line-height: var(--text-body-leading) !important;
+}
+
+/* Strip ALL remaining inline font-size/family from CD attributes — the
+   `size="..."` and `face="..."` attributes on <font> tags also hardcode
+   2006-era values. */
+.led-entry-html font,
+.led-guide-html font {
+  font-size: inherit !important;
+  font-family: inherit !important;
+}
 
 /* Pearson Longman branding — Pearson primary blue confirmed from
    pearson.com brand palette (Pearson Chambray #364395).
@@ -188,6 +263,17 @@ body {
 .led-guide-html h3 {
   color: color-mix(in srgb, var(--fg) 55%, var(--blue));
 }
+/* The 2006 CHM titles/nav blocks (class="helphead") are stripped server-side,
+   but hide any that survive so a repeated page banner can never reappear.
+   The h2/h3 rules below still style real section headings further down. */
+.led-guide-html .helphead {
+  display: none;
+}
+/* Whatever the first element of the injected article is, collapse its top
+   margin so the text starts flush at the card padding — never with a gap. */
+.led-guide-html > :first-child {
+  margin-top: 0;
+}
 .led-guide-html a {
   color: var(--theme-accent);
   text-underline-offset: 2px;
@@ -198,7 +284,7 @@ body {
   margin: 1.25rem 0;
 }
 .led-guide-html table {
-  font-size: 13px;
+  font-size: var(--text-body);
   border-collapse: collapse;
   margin: 0.75rem 0;
   max-width: 100%;
@@ -223,7 +309,7 @@ body {
 .led-guide-html code,
 .led-guide-html kbd {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.85em;
+  font-size: var(--text-mini);
   background-color: color-mix(in srgb, var(--fg) 6%, transparent);
   border-radius: 4px;
   padding: 0.1em 0.35em;

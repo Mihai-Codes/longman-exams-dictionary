@@ -9,6 +9,42 @@
     />
     <title>App</title>
     <style>
+      /* Unified text scale — Quantic/Quantum design system pattern.
+         These override Glaze's runtime-injected styles. */
+      :root {
+        --text-body: 14px;
+        --text-body-leading: 1.55;
+        --text-small: 12px;
+        --text-small-leading: 1.4;
+        --text-mini: 10px;
+        --text-mini-leading: 1.3;
+        --text-large: 16px;
+        --text-large-leading: 1.5;
+        --text-heading: 18px;
+        --text-heading-leading: 1.35;
+      }
+      /* CD content reset — strip the 2006-era hardcoded Times New Roman /
+         point sizes from raw entry & guide HTML so it inherits the unified
+         scale. Scoped to the CD surfaces ONLY; the app UI (#root and its
+         Glaze Text/Badge components) is untouched, so heading weight, size
+         hierarchy, and italics render as designed. Font family and size are
+         neutralized here — weight and style are left intact so bold/italic
+         survive. */
+      .led-entry-html,
+      .led-guide-html,
+      .led-entry-html *,
+      .led-guide-html * {
+        font-family: var(--font-sans) !important;
+      }
+      /* Strip ALL remaining CD inline hardcodes (font tags, style attrs) so
+         they inherit the computed scale instead of the CD's fixed points. */
+      .led-entry-html font,
+      .led-guide-html font,
+      .led-entry-html [style],
+      .led-guide-html [style] {
+        font-family: inherit !important;
+        font-size: inherit !important;
+      }
       /* Longman Pearson branding — must win over Glaze's injected
          stylesheets which load at runtime after our compiled CSS. */
       :root {

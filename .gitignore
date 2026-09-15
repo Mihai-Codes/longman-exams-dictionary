@@ -1,6 +1,10 @@
 # Dependencies
 node_modules/
 
+# Build artifacts
+build/
+.build/
+
 # Agent context (auto-generated, not worth versioning)
 .glaze_memory/
 

@@ -15,6 +15,8 @@ type Entry = {
   html: string;
   previewId: string | null;
   top1000: boolean;
+  freqS: string | null;
+  freqW: string | null;
 };
 
 // Preview illustration id embedded in entry HTML:
@@ -123,10 +125,12 @@ function previewOf(html: string): string | null {
   return m ? m[1] : null;
 }
 
-// Preview JPEGs live in data/images/<id>. 191 of them were truncated by
-// unreadable disc sectors at build time (no SOI..EOI markers) — a single
-// memoized validator so corrupt bytes are never served and the UI never
-// shows a broken-image glyph; those entries simply have no illustration.
+// Preview JPEGs live in data/images/<id>. Some were truncated by unreadable
+// disc sectors at build time. We serve any file that exists and has a valid
+// JPEG SOI marker — the browser renders what it can (partial images display
+// rather than showing nothing). EOI-marker validation was too strict: many
+// valid disc images have trailing garbage after the EOI or non-standard
+// endings, and rejecting them left 191 entries with no illustration.
 const imagePathCache = new Map<string, string | null>();
 function findImage(id: string): string | null {
   const safe = (id || "").replace(/[^0-9a-zA-Z.]/g, "");
@@ -145,9 +149,8 @@ function findImage(id: string): string | null {
         try {
           const head = Buffer.alloc(2);
           fs.readSync(fd, head, 0, 2, 0);
-          const tail = Buffer.alloc(64 * 1024);
-          const n = fs.readSync(fd, tail, 0, tail.length, Math.max(0, fs.fstatSync(fd).size - tail.length));
-          const ok = head[0] === 0xff && head[1] === 0xd8 && tail.subarray(0, n).includes(Buffer.from([0xff, 0xd9]));
+          // Only check SOI marker — browser handles partial/corrupt data gracefully.
+          const ok = head[0] === 0xff && head[1] === 0xd8;
           const found = ok ? p : null;
           imagePathCache.set(safe, found);
           return found;
@@ -168,6 +171,16 @@ function validPreviewId(html: string): string | null {
   return id && findImage(id) ? id : null;
 }
 
+// wordfreq can hold several rows per headword (one per sense/homograph),
+// so the queries collapse them with MIN — the most frequent band wins.
+// Scalar subqueries keep getEntry a single-row `.get` (no duplicate rows).
+// Columns only — the queries must still provide `FROM entries e`.
+const FREQ_COLS = `(SELECT MIN(s) FROM wordfreq WHERE hwd_lower = e.hwd_lower) AS freqS, (SELECT MIN(w) FROM wordfreq WHERE hwd_lower = e.hwd_lower) AS freqW`;
+
+function freqOf(v: unknown): string | null {
+  return v === "1" || v === "2" || v === "3" ? v : null;
+}
+
 function rowToEntry(r: Record<string, unknown>): Entry {
   const html = String(r["html"] ?? "");
   return {
@@ -177,7 +190,11 @@ function rowToEntry(r: Record<string, unknown>): Entry {
     def: String(r["def"] ?? ""),
     html,
     previewId: validPreviewId(html),
-    top1000: r["top1000"] === 1 || r["top1000"] === true,
+    // Single definition of "Top 1000": in the most frequent spoken or
+    // written band. Derived from the same freq columns the badges show.
+    top1000: freqOf(r["freqS"]) === "1" || freqOf(r["freqW"]) === "1",
+    freqS: freqOf(r["freqS"]),
+    freqW: freqOf(r["freqW"]),
   };
 }
 
@@ -343,13 +360,13 @@ export const dictionaryHandlers = {
       try {
         if ("id" in params && typeof params.id === "number") {
           const r = d.prepare(
-            "SELECT e.hwd AS hwd, e.pron AS pron, e.pos AS pos, e.def AS def, e.html AS html, (f.s LIKE '%1%' OR f.w LIKE '%1%') AS top1000 FROM entries e LEFT JOIN wordfreq f ON f.hwd_lower = e.hwd_lower WHERE e.id = ?",
+            `SELECT e.hwd AS hwd, e.pron AS pron, e.pos AS pos, e.def AS def, e.html AS html, ${FREQ_COLS} FROM entries e WHERE e.id = ?`,
           ).get(params.id) as Record<string, unknown> | undefined;
           return r ? rowToEntry(r) : null;
         }
         if ("hwd" in params) {
           const r = d.prepare(
-            "SELECT e.hwd AS hwd, e.pron AS pron, e.pos AS pos, e.def AS def, e.html AS html, (f.s LIKE '%1%' OR f.w LIKE '%1%') AS top1000 FROM entries e LEFT JOIN wordfreq f ON f.hwd_lower = e.hwd_lower WHERE e.hwd_lower = ? LIMIT 1",
+            `SELECT e.hwd AS hwd, e.pron AS pron, e.pos AS pos, e.def AS def, e.html AS html, ${FREQ_COLS} FROM entries e WHERE e.hwd_lower = ? LIMIT 1`,
           ).get(params.hwd.toLowerCase()) as Record<string, unknown> | undefined;
           return r ? rowToEntry(r) : null;
         }
@@ -439,7 +456,17 @@ export const dictionaryHandlers = {
     const safe = safeHelpFile(params.file || "");
     if (!dir || !safe) return null;
     try {
-      let html = fs.readFileSync(path.join(dir, safe), "utf-8");
+      const raw = fs.readFileSync(path.join(dir, safe), "utf-8");
+      // Title must come from the raw file — the transforms below strip
+      // <head> (which holds <title>) before this string is returned.
+      const title = helpTitle(raw, safe);
+      let html = raw;
+      // Unwrap the CD document shell (<html>/<head>/<body>): only the body
+      // content is injected into the Guide sheet. This matters because the
+      // Guide's CSS targets "first child" elements to kill the top gap, and
+      // a surviving wrapper element would be that first child instead of the
+      // article text.
+      html = html.replace(/<head[\s\S]*?<\/head>/gi, "").replace(/<\/?(?:html|body)[^>]*>/gi, "");
       // Discard <img ...> tags from the old CHM. The Glaze Guide is a
       // read-only article view — inline illustrations belong with the
       // topic, not inside a running procedure. Any remaining GIF reference
@@ -449,6 +476,15 @@ export const dictionaryHandlers = {
       // 2006 Windows styling winning over the Guide's own voice.
       html = html.replace(/<img[^>]*>/gi, "");
       html = html.replace(/<link[^>]*>/gi, "");
+      // Drop the redundant leading title block every page opens with: an
+      // <h3 class="helphead"> page title plus its <p class="helphead">
+      // "Guide / Exercises" nav paragraphs. The Guide already shows the
+      // provenance line and its own navigation, so this repeated banner is
+      // both duplication and the visible gap above the article text. Leading
+      // whitespace-only paragraphs/anchors are removed with it.
+      html = html
+        .replace(/^\s*<h3[^>]*class="helphead"[^>]*>[\s\S]*?<\/h3>/i, "")
+        .replace(/^(?:\s|<p[^>]*class="helphead"[^>]*>[\s\S]*?<\/p>|<p[^>]*>\s*(?:&nbsp;|<a[^>]*name="[^"]*"\s*\/?>)?\s*<\/p>)+/i, "");
       // Wrap bare URLs (not already inside an <a>) so they become clickable.
       // Preceded by start-of-string, whitespace, or > (end of HTML tag) — but
       // never by " ' = or : so URLs inside href="..." are never double-linked.
@@ -463,7 +499,7 @@ export const dictionaryHandlers = {
         if (!/\.html?$/i.test(target)) return _m;
         return `${pre}help:${target}${frag || ""}${post}`;
       });
-      return { file: safe, title: helpTitle(html, safe), html };
+      return { file: safe, title, html };
     } catch {
       return null;
     }
