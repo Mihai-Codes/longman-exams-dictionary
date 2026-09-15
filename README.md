@@ -50,6 +50,7 @@ sources/
 ## Setup
 
 ```bash
+git lfs install         # once per machine
 git lfs pull            # fetch the 350MB corpus
 npm install
 bash glaze-node.sh build
