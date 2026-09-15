@@ -57,26 +57,26 @@ html, body { overscroll-behavior-x: none; }
 /* Guide headings: CHM pages use <h2>/<h3> with hardcoded sizes. Scale them
    relative to the unified body token instead of browser defaults. */
 .led-guide-html h2 {
-  font-size: var(--text-large) !important;
+  font-size: var(--text-heading) !important;
   font-weight: 600 !important;
-  line-height: var(--text-large-leading) !important;
+  line-height: var(--text-heading-leading) !important;
 }
 .led-guide-html h3 {
-  font-size: var(--text-body) !important;
+  font-size: var(--text-heading) !important;
   font-weight: 600 !important;
-  line-height: var(--text-body-leading) !important;
+  line-height: var(--text-heading-leading) !important;
 }
 
-/* Lists, paragraphs, blockquotes: all ride the unified body size. */
+/* Reading text rides the LARGE token (16px) so the Guide article body
+   matches the Dictionary entry body — one reading size across surfaces.
+   code/kbd stay at body size: they're UI affordances, not reading text. */
 .led-guide-html p,
 .led-guide-html li,
 .led-guide-html td,
 .led-guide-html th,
-.led-guide-html blockquote,
-.led-guide-html code,
-.led-guide-html kbd {
-  font-size: var(--text-body) !important;
-  line-height: var(--text-body-leading) !important;
+.led-guide-html blockquote {
+  font-size: var(--text-large) !important;
+  line-height: var(--text-large-leading) !important;
 }
 
 /* Strip ALL remaining inline font-size/family from CD attributes — the
