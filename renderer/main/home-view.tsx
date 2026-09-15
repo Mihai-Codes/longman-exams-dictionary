@@ -1804,7 +1804,7 @@ export function HomeView() {
         onOpenChange={setShowAbout}
         title="About"
         hideTitle
-        description="Longman Exams Dictionary for upper-intermediate to advanced learners, fully offline."
+        description="Longman Exams Dictionary for upper-intermediate to advanced learners."
         hideDescription
       >
         <div className="led-dialog-in flex flex-col items-center text-center gap-5 py-2">
@@ -1821,7 +1821,7 @@ export function HomeView() {
           </div>
           <div className="grid grid-cols-2 gap-2 w-full">
             {[
-              [stats ? stats.totalEntries.toLocaleString() : "…", "headwords offline"],
+              [stats ? stats.totalEntries.toLocaleString() : "…", "headwords"],
               ["212,000", "words, phrases, meanings"],
               ["160,000", "examples of natural use"],
               ["762", "topics with study words"],
