@@ -816,7 +816,10 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
       >
         <div className="flex items-center justify-center p-2">
           {imgSrc ? (
-            <img src={imgSrc} alt="" className="max-w-full rounded-lg border border-separator" />
+            // 191 disc JPEGs pass the SOI check but have corrupt scan data
+            // (bad sectors) — they fail to decode and show a broken-image
+            // glyph. Route that failure into the same honest fallback.
+            <img src={imgSrc} alt="" onError={() => setImgSrc(null)} className="max-w-full rounded-lg border border-separator" />
           ) : imgSrc === null ? (
             <Text variant="small" color="tertiary">No illustration for “{entry.hwd}”</Text>
           ) : (
