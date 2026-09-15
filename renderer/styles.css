@@ -212,19 +212,20 @@ body {
 .text-heading1 { letter-spacing: -0.02em; }
 .text-small { letter-spacing: 0.01em; }
 
-/* Detail-in: subtle fade + rise when the selected entry changes. Kept short
-   (160ms) per HIG — feedback, not theatre. Honors reduced motion. */
+/* Detail-in / waterfall: one fade+rise for every content replacement
+   (Dictionary entry, Coach topic, Guide article, tab switch). 240ms per
+   HIG — feedback, not theatre. Honors reduced motion unless Motion is On. */
 @keyframes led-detail-in {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: none; }
 }
-.led-detail-in { animation: led-detail-in 160ms ease-out; }
+.led-detail-in { animation: led-detail-in 240ms ease-out both; }
 @media (prefers-reduced-motion: reduce) {
   body:not(.led-motion-full) .led-detail-in { animation: none; }
 }
 
-/* Waterfall: entry sections cascade in when a word opens (staggered rise).
-   Delays by position; conditional sections simply take the next slot. */
+/* Waterfall: sections cascade in when a selection opens (staggered rise).
+   Same keyframes as led-detail-in; delays by position. */
 .led-waterfall > * { animation: led-detail-in 240ms ease-out both; }
 .led-waterfall > *:nth-child(2) { animation-delay: 50ms; }
 .led-waterfall > *:nth-child(3) { animation-delay: 100ms; }

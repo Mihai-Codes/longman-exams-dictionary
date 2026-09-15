@@ -188,6 +188,23 @@ function useGamification() {
   return { streak, lookup, celebrate, reset };
 }
 
+function prefersReducedMotion(): boolean {
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return false;
+  }
+}
+// Motion On (full) always plays; Auto follows the Mac setting.
+function motionPlays(full: boolean): boolean {
+  return full || !prefersReducedMotion();
+}
+
+const DETAIL_IN: { keyframes: Keyframe[]; options: KeyframeAnimationOptions } = {
+  keyframes: [{ opacity: 0, transform: "translateY(4px)" }, { opacity: 1, transform: "none" }],
+  options: { duration: 240, easing: "ease-out", fill: "both" },
+};
+
 let sharedCtx: AudioContext | null = null;
 
 // One voice per surface — each menu and chrome action gets its own pitch,
@@ -894,10 +911,16 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
   // Longest list in the app renders in pages of 150 — full 762-row DOM janks.
   const [visibleCount, setVisibleCount] = useState(150);
   // Glosses behind the related-word chips: fetched per selected topic.
-  const [glosses, setGlosses] = useState<{ hwd: string; pos: string; def: string; top1000: boolean }[]>([]);
   const [ghost, setGhost] = useState("");
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // Snapshot of the pane currently on screen. Dictionary keeps the previous
+  // entry until getEntry returns; we keep the previous topic until its
+  // glosses arrive so the waterfall plays once, with no Loading flash.
+  const [pane, setPane] = useState<{
+    topic: Topic;
+    glosses: { hwd: string; pos: string; def: string; top1000: boolean }[];
+  } | null>(null);
 
   useEffect(() => {
     const t = setTimeout(async () => {
@@ -925,17 +948,16 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
   // Glosses follow the selection (same staleness guard as HomeView fetches).
   useEffect(() => {
     if (!selected) {
-      setGlosses([]);
+      setPane(null);
       return;
     }
     let live = true;
-    setGlosses([]);
     void (async () => {
       try {
         const g = await invoke<{ hwd: string; pos: string; def: string; top1000: boolean }[]>("dictionary:topicEntries", { words: selected.related });
-        if (live) setGlosses(g ?? []);
+        if (live) setPane({ topic: selected, glosses: g ?? [] });
       } catch {
-        /* chips without glosses remain */
+        if (live) setPane({ topic: selected, glosses: [] });
       }
     })();
     return () => {
@@ -1062,7 +1084,7 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
         className="glass-toolbar"
       >
         <div className="px-1 pb-6 pt-4">
-          {!selected ? (
+          {!pane ? (
             <div className="flex flex-col items-center justify-center h-full p-10">
               <div className="w-14 h-14 rounded-[16px] flex items-center justify-center shadow-lg" style={{ backgroundColor: "var(--red)" }}>
                 <GraduationCapIcon className="size-7" style={{ color: "#fff" }} />
@@ -1073,15 +1095,22 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
               </Text>
             </div>
           ) : (
-            <div key={selected.topic} className="led-detail-in flex flex-col gap-4 p-6 max-w-[720px] mx-auto w-full">
+            <div key={pane.topic.topic} className="flex flex-col gap-4 p-6 max-w-[720px] mx-auto w-full">
+              <div className="contents led-waterfall">
+              <div className="flex flex-col gap-3">
+                <Text as="h1" variant="heading1" className="tracking-tight">
+                  {pane.topic.topic}
+                </Text>
+                <Separator />
+              </div>
               <div className="rounded-xl bg-support-blue-10 border border-separator p-4">
                 <Text variant="small-strong" color="secondary" className="uppercase tracking-widest flex items-center gap-1.5 mb-3">
                   <LibraryIcon className="size-3.5" /> Related words
-                  <Badge size="small" color="secondary" className="shrink-0">{selected.related.length}</Badge>
+                  <Badge size="small" color="secondary" className="shrink-0">{pane.topic.related.length}</Badge>
                 </Text>
-                {glosses.length > 0 ? (
+                {pane.glosses.length > 0 ? (
                   <div className="space-y-2">
-                    {glosses.map((g) => (
+                    {pane.glosses.map((g) => (
                       <button key={g.hwd} onClick={() => onLookup(g.hwd)} className="cursor-pointer text-left w-full">
                         <div className="flex gap-2.5 rounded-lg bg-well/60 border border-separator/50 px-3 py-2.5 items-start">
                           <div className="min-w-0">
@@ -1108,10 +1137,10 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
                         </div>
                       </button>
                     ))}
-                    {selected.related.filter((w) => !glosses.some((g) => g.hwd.toLowerCase() === w.toLowerCase())).length > 0 && (
+                    {pane.topic.related.filter((w) => !pane.glosses.some((g) => g.hwd.toLowerCase() === w.toLowerCase())).length > 0 && (
                       <div className="flex flex-wrap gap-1.5 pt-1">
-                        {selected.related
-                          .filter((w) => !glosses.some((g) => g.hwd.toLowerCase() === w.toLowerCase()))
+                        {pane.topic.related
+                          .filter((w) => !pane.glosses.some((g) => g.hwd.toLowerCase() === w.toLowerCase()))
                           .map((w) => (
                             <button key={w} onClick={() => onLookup(w)} className="cursor-pointer">
                               <Badge color="secondary">{w.toLowerCase()}</Badge>
@@ -1122,7 +1151,7 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
                   </div>
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
-                    {selected.related.map((w) => (
+                    {pane.topic.related.map((w) => (
                       <button key={w} onClick={() => onLookup(w)} className="cursor-pointer">
                         <Badge color="secondary">{w.toLowerCase()}</Badge>
                       </button>
@@ -1132,6 +1161,7 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
                 <Text variant="small" color="tertiary" className="mt-3">
                   Tap a word to look it up in the dictionary.
                 </Text>
+              </div>
               </div>
             </div>
           )}
@@ -1282,14 +1312,21 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
       setArticle(null);
       return;
     }
-    setArticle(undefined);
+    // Keep the previous article on screen until this page arrives — same as
+    // Dictionary/Coach. Setting undefined here flashed "Loading…" and
+    // skipped the 240ms fade.
+    let live = true;
     void (async () => {
       try {
-        setArticle(await invoke<HelpArticle | null>("dictionary:helpPage", { file: selected.file }));
+        const next = await invoke<HelpArticle | null>("dictionary:helpPage", { file: selected.file });
+        if (live) setArticle(next);
       } catch {
-        setArticle(null);
+        if (live) setArticle(null);
       }
     })();
+    return () => {
+      live = false;
+    };
   }, [selected]);
 
   // Open requests from the Exams Coach: jump to the page's journey and
@@ -1599,22 +1636,20 @@ export function HomeView() {
       /* private mode — session-only */
     }
   }, [motionIsOn]);
-  // Tab glide without remounting (see note on the tab body): replay a
-  // short slide-fade on every switch. Skipped for reduced motion.
+  // Tab body fade without remounting (remounting refetches lists). Same
+  // 240ms rise as Dictionary/Coach/Guide content. Auto still plays unless
+  // the Mac has Reduce Motion; Motion On forces it. Rapid clicks cancel.
   const tabBodyRef = useRef<HTMLDivElement | null>(null);
+  const tabAnimRef = useRef<Animation | null>(null);
   const firstTabRender = useRef(true);
   useEffect(() => {
     if (firstTabRender.current) {
       firstTabRender.current = false;
       return;
     }
-    if (!motionIsOn) return;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) return;
-    tabBodyRef.current?.animate(
-      [{ opacity: 0, transform: "translateX(16px)" }, { opacity: 1, transform: "none" }],
-      { duration: 220, easing: "cubic-bezier(0.22, 1, 0.36, 1)" }
-    );
+    tabAnimRef.current?.cancel();
+    if (!motionPlays(motionIsOn)) return;
+    tabAnimRef.current = tabBodyRef.current?.animate(DETAIL_IN.keyframes, DETAIL_IN.options) ?? null;
   }, [activeTab]);
   const { streak, lookup, celebrate: showConfetti, reset: resetProgress } = useGamification();
   const [history, setHistory] = useState<string[]>([]);
