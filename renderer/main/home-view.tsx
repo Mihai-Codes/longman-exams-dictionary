@@ -217,6 +217,11 @@ function playBlip(freq = 880, dur = 0.1, vol = 0.04) {
     const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!sharedCtx || sharedCtx.state === "closed") sharedCtx = new Ctor();
     const ctx = sharedCtx;
+    // Browsers suspend an idle AudioContext (~30s of silence) to save power.
+    // Starting an oscillator on a suspended context stays silent until some
+    // later resume — the "sound lags the click" symptom. Resume synchronously
+    // on every blip; resume() is a no-op when already running.
+    if (ctx.state === "suspended") void ctx.resume();
     const o = ctx.createOscillator();
     const g = ctx.createGain();
     o.type = "sine";
