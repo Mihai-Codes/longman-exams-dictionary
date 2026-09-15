@@ -215,22 +215,38 @@ const SFX = {
 function playBlip(freq = 880, dur = 0.1, vol = 0.04) {
   try {
     const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!sharedCtx || sharedCtx.state === "closed") sharedCtx = new Ctor();
+    if (!sharedCtx || sharedCtx.state === "closed") {
+      // "interactive" latency: smallest output buffer, so a scheduled blip
+      // reaches the speakers in ~10ms rather than the default larger buffer.
+      sharedCtx = new Ctor({ latencyHint: "interactive" });
+      // Keep-alive: a zero-gain oscillator renders the output stream
+      // forever. Without an active stream, macOS puts the audio device to
+      // sleep after ~30s of silence and the first blip after idle waits
+      // for the device to wake (~300ms+) — the laggy-click symptom that
+      // resume() alone cannot fix. Silent rendering costs ~nothing.
+      const keepGain = sharedCtx.createGain();
+      keepGain.gain.value = 0;
+      const keepOsc = sharedCtx.createOscillator();
+      keepOsc.connect(keepGain).connect(sharedCtx.destination);
+      keepOsc.start();
+    }
     const ctx = sharedCtx;
-    // Browsers suspend an idle AudioContext (~30s of silence) to save power.
-    // Starting an oscillator on a suspended context stays silent until some
-    // later resume — the "sound lags the click" symptom. Resume synchronously
-    // on every blip; resume() is a no-op when already running.
-    if (ctx.state === "suspended") void ctx.resume();
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = "sine";
-    o.frequency.value = freq;
-    g.gain.value = vol;
-    o.connect(g).connect(ctx.destination);
-    o.start();
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
-    o.stop(ctx.currentTime + dur + 0.03);
+    // Browsers can still suspend an AudioContext; resume() is async and an
+    // oscillator scheduled before it resolves is silently swallowed. Await
+    // the resume before scheduling; on an already-running context the
+    // promise resolves immediately, so steady-state blips stay instant.
+    void (async () => {
+      if (ctx.state !== "running") await ctx.resume();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "sine";
+      o.frequency.value = freq;
+      g.gain.value = vol;
+      o.connect(g).connect(ctx.destination);
+      o.start();
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
+      o.stop(ctx.currentTime + dur + 0.03);
+    })();
   } catch {
     /* no audio device — stay silent */
   }
