@@ -978,9 +978,27 @@ type Topic = { topic: string; related: string[] };
 // Exam guides (FCE…TOEFL) open the matching Guide page, like the CD's
 // Exams Coach did: guide first, then practice with topic words.
 const EXAM_GUIDES = [["FCE", "fce.htm"], ["CAE", "cae.htm"], ["IELTS", "ielts.htm"], ["TOEIC", "toeic.htm"], ["TOEFL", "toefl.htm"]] as const;
+// CD related-word labels carry sense numbers (“SHOULD/OUGHT TO (2)”) that
+// the topic catalogue does not. Strip those so a leftover row can still
+// match the topic it names.
+function relatedKey(s: string): string {
+  return s
+    .toLowerCase()
+    .trim()
+    .replace(/\s*\([^)]*\)\s*$/g, "")
+    .replace(/\s+\d+(-\d+)?$/g, "")
+    .trim();
+}
+function matchTopic(label: string, catalog: Topic[]): Topic | undefined {
+  const lower = label.toLowerCase();
+  const key = relatedKey(label);
+  return catalog.find((t) => t.topic.toLowerCase() === lower)
+    ?? catalog.find((t) => relatedKey(t.topic) === key);
+}
 function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { onLookup: (hwd: string) => void; onOpenGuide: (file: string) => void; requestTopic: string | null; onRequestOpened: () => void }) {
   const [query, setQuery] = useState("");
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [catalog, setCatalog] = useState<Topic[]>([]);
   const [selected, setSelected] = useState<Topic | null>(null);
   // Longest list in the app renders in pages of 150 — full 762-row DOM janks.
   const [visibleCount, setVisibleCount] = useState(150);
@@ -995,6 +1013,12 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
     topic: Topic;
     glosses: { hwd: string; pos: string; def: string; top1000: boolean }[];
   } | null>(null);
+
+  useEffect(() => {
+    void invoke<Topic[]>("dictionary:topics", { query: "", limit: 2000 })
+      .then((r) => setCatalog((r ?? []).filter((t) => t.related.length > 0)))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(async () => {
@@ -1182,58 +1206,67 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
                   <LibraryIcon className="size-3.5" /> Related words
                   <Badge size="small" color="secondary" className="shrink-0">{pane.topic.related.length}</Badge>
                 </Text>
-                {pane.glosses.length > 0 ? (
-                  <div className="space-y-2">
-                    {pane.glosses.map((g) => (
-                      <button key={g.hwd} onClick={() => onLookup(g.hwd)} className="cursor-pointer text-left w-full">
-                        <div className="flex gap-2.5 rounded-lg bg-well/60 border border-separator/50 px-3 py-2.5 items-start">
-                          <div className="min-w-0">
-                            <span className="flex items-center gap-1.5">
-                              <Text variant="small-strong">{g.hwd}</Text>
-                              {g.pos && (
+                <div className="space-y-2">
+                  {pane.topic.related.map((w) => {
+                    const g = pane.glosses.find((x) => x.hwd.toLowerCase() === w.toLowerCase());
+                    const topicHit = g ? undefined : matchTopic(w, catalog);
+                    const label = g?.hwd ?? topicHit?.topic ?? w.toLowerCase();
+                    return (
+                      <button
+                        key={w}
+                        onClick={() => {
+                          if (g) {
+                            onLookup(g.hwd);
+                            return;
+                          }
+                          if (topicHit) {
+                            playBlip(SFX.coach, 0.09);
+                            setQuery("");
+                            setSelected(topicHit);
+                            return;
+                          }
+                          onLookup(w);
+                        }}
+                        className="cursor-pointer text-left w-full min-w-0"
+                      >
+                        <div className="flex gap-2.5 rounded-lg bg-well/60 border border-separator/50 px-3 py-2.5 items-start overflow-hidden">
+                          <div className="min-w-0 flex-1">
+                            <span className="flex flex-wrap items-center gap-1.5 min-w-0">
+                              <Text variant="small-strong">{label}</Text>
+                              {g?.pos && (
                                 <Badge size="small" color="secondary" className="shrink-0">
                                   {g.pos.split(",")[0].trim()}
                                 </Badge>
                               )}
-                              {g.top1000 && (
+                              {g?.top1000 && (
                                 <Badge size="small" color="secondary" className="shrink-0">
                                   Top 1000
                                 </Badge>
                               )}
+                              {!g && (
+                                <Badge size="small" color="secondary" className="shrink-0">
+                                  {topicHit ? "Topic" : "Related"}
+                                </Badge>
+                              )}
                             </span>
-                            {g.def && (
+                            {g?.def && (
                               <Text variant="small" color="secondary" className="leading-relaxed mt-0.5 line-clamp-2">
                                 {g.def}
                               </Text>
                             )}
                           </div>
-                          <BookOpenIcon className="size-3.5 text-quaternary shrink-0 ml-auto mt-0.5" />
+                          {g ? (
+                            <BookOpenIcon className="size-3.5 text-quaternary shrink-0 mt-0.5" />
+                          ) : (
+                            <GraduationCapIcon className="size-3.5 text-quaternary shrink-0 mt-0.5" />
+                          )}
                         </div>
                       </button>
-                    ))}
-                    {pane.topic.related.filter((w) => !pane.glosses.some((g) => g.hwd.toLowerCase() === w.toLowerCase())).length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {pane.topic.related
-                          .filter((w) => !pane.glosses.some((g) => g.hwd.toLowerCase() === w.toLowerCase()))
-                          .map((w) => (
-                            <button key={w} onClick={() => onLookup(w)} className="cursor-pointer">
-                              <Badge color="secondary">{w.toLowerCase()}</Badge>
-                            </button>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5">
-                    {pane.topic.related.map((w) => (
-                      <button key={w} onClick={() => onLookup(w)} className="cursor-pointer">
-                        <Badge color="secondary">{w.toLowerCase()}</Badge>
-                      </button>
-                    ))}
-                  </div>
-                )}
+                    );
+                  })}
+                </div>
                 <Text variant="small" color="tertiary" className="mt-3">
-                  Tap a word to look it up in the dictionary.
+                  Tap a headword to look it up, or a topic to open it.
                 </Text>
               </div>
               </div>

@@ -47,6 +47,7 @@ function loadAudioMap(): Map<string, string> {
   if (audioMap) return audioMap;
   audioMap = new Map();
   const candidates = [
+    path.join(__dirname, "..", "data", "audio", "pronus_word_lookup.txt"),
     path.join(__dirname, "..", "..", "data", "audio", "pronus_word_lookup.txt"),
     path.join(__dirname, "..", "..", "..", "sources", "data", "audio", "pronus_word_lookup.txt"),
     path.join(process.cwd(), "data", "audio", "pronus_word_lookup.txt"),
@@ -76,6 +77,7 @@ function loadAudioMap(): Map<string, string> {
 
 function audioCandidates(file: string): string[] {
   return [
+    path.join(__dirname, "..", "data", "audio", "sound", file),
     path.join(__dirname, "..", "..", "data", "audio", "sound", file),
     path.join(__dirname, "..", "..", "..", "sources", "data", "audio", "sound", file),
     path.join(process.cwd(), "data", "audio", "sound", file),
@@ -85,6 +87,7 @@ function audioCandidates(file: string): string[] {
 // --- Help pages (LED help system, recovered from led_help.chm) ------------
 function helpDirs(): string[] {
   return [
+    path.join(__dirname, "..", "data", "help"),
     path.join(__dirname, "..", "..", "data", "help"),
     path.join(__dirname, "..", "..", "..", "sources", "data", "help"),
     path.join(process.cwd(), "data", "help"),
@@ -135,6 +138,7 @@ function findImage(id: string): string | null {
   const hit = imagePathCache.get(safe);
   if (hit !== undefined) return hit;
   const candidates = [
+    path.join(__dirname, "..", "data", "images", safe),
     path.join(__dirname, "..", "..", "data", "images", safe),
     path.join(__dirname, "..", "..", "..", "sources", "data", "images", safe),
     path.join(process.cwd(), "data", "images", safe),
@@ -204,6 +208,7 @@ let jsonLower: string[] | null = null;
 
 function dbPath(): string | null {
   const candidates = [
+    path.join(__dirname, "..", "data", "led_full.sqlite"),
     path.join(__dirname, "..", "..", "data", "led_full.sqlite"),
     path.join(__dirname, "..", "..", "..", "sources", "data", "led_full.sqlite"),
     path.join(process.cwd(), "data", "led_full.sqlite"),
@@ -240,6 +245,7 @@ function openDb(): DatabaseSync | null {
 function loadJson(): Entry[] {
   if (jsonCache) return jsonCache;
   const candidates = [
+    path.join(__dirname, "..", "data", "led_entries.json"),
     path.join(__dirname, "..", "..", "data", "led_entries.json"),
     path.join(process.cwd(), "data", "led_entries.json"),
   ];

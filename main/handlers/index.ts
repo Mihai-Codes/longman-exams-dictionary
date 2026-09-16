@@ -50,6 +50,7 @@ export function registerHandlers(): void {
   ipcMain.handle("dictionary:verb", async (_e, p: { hwd: string }) => dictionaryHandlers.verb(p));
   ipcMain.handle("dictionary:errors", async (_e, p: { hwd: string }) => dictionaryHandlers.errors(p));
   ipcMain.handle("dictionary:topics", async (_e, p: { query: string; limit?: number }) => dictionaryHandlers.topics(p));
+  ipcMain.handle("dictionary:topicEntries", async (_e, p: { words: string[] }) => dictionaryHandlers.topicEntries(p));
 
   // Personal library — recent lookups + saved words in app userData
   ipcMain.handle("library:history", async () => libraryHandlers.history());
