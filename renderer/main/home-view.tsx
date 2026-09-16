@@ -2172,7 +2172,7 @@ export function HomeView() {
       <div className="app-footer h-7 shrink-0 border-t border-separator bg-panel flex items-center px-3 text-small text-tertiary gap-2">
         <GraduationCapIcon className="size-3.5" />
         <Text variant="small" color="tertiary" truncate>
-          For Upper Intermediate – Advanced Learners · 212,000 words, phrases and meanings · Topic Activator / Essay Activator
+          For Upper Intermediate – Advanced Learners · 212,000 words, phrases and meanings · Exams Coach
         </Text>
         <div className="flex-1" />
         <Text variant="small" color="quaternary">Fully offline • Pearson 2006</Text>
