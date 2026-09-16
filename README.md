@@ -1,13 +1,19 @@
 # Longman Exams Dictionary
 
-![macOS](https://img.shields.io/badge/macOS-Tahoe%2B-000000?logo=apple&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178C6?logo=typescript&logoColor=white)
-![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
-![SQLite](https://img.shields.io/badge/SQLite-42k%20entries-003B57?logo=sqlite&logoColor=white)
-![Glaze](https://img.shields.io/badge/Glaze-0.14-364395)
-![Offline](https://img.shields.io/badge/offline-100%25-008638)
-![License](https://img.shields.io/badge/License-MIT-FFB81C)
-![CI](https://github.com/Mihai-Codes/longman-exams-dictionary/actions/workflows/verify.yml/badge.svg)
+<p align="center">
+  <img src="media/readme-banner.png" alt="Longman Exams Dictionary" width="100%">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/macOS-Tahoe%2B-000000?logo=apple&logoColor=white" alt="macOS">
+  <img src="https://img.shields.io/badge/TypeScript-5.5-3178C6?logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" alt="React">
+  <img src="https://img.shields.io/badge/SQLite-42k%20entries-003B57?logo=sqlite&logoColor=white" alt="SQLite">
+  <img src="https://img.shields.io/badge/Glaze-0.14-364395" alt="Glaze">
+  <img src="https://img.shields.io/badge/offline-100%25-008638" alt="Offline">
+  <img src="https://img.shields.io/badge/License-MIT-FFB81C" alt="License">
+  <a href="https://github.com/Mihai-Codes/longman-exams-dictionary/actions/workflows/verify.yml"><img src="https://github.com/Mihai-Codes/longman-exams-dictionary/actions/workflows/verify.yml/badge.svg" alt="CI"></a>
+</p>
 
 Unofficial native macOS port of the classic **Longman Exams Dictionary CD-ROM (2006)**, built for upper-intermediate to advanced learners preparing for FCE, CAE, IELTS, TOEIC and TOEFL. Fully offline, no account, no tracking. Live on the [Glaze Store](https://www.glaze.app/) by Raycast.
 
