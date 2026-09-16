@@ -225,6 +225,9 @@ const SFX = {
   online: 1318.5, // current entry opened on ldoceonline.com
 };
 
+// One loudness for every tone, so the pool key and the generated WAV agree.
+const SFX_VOL = 0.04;
+
 function wavBlip(freq: number, dur: number, vol: number): string {
   const sr = 22050;
   const n = Math.ceil(sr * (dur + 0.03));
@@ -269,25 +272,75 @@ function playClip(el: HTMLAudioElement, url: string): void {
   void el.play().catch(() => { /* autoplay blocked until a later gesture */ });
 }
 
-function stopClip(el: HTMLAudioElement | null): void {
-  if (!el) return;
-  el.pause();
-  el.removeAttribute("src");
-  try { el.load(); } catch { /* nothing loaded */ }
+// One preloaded element per distinct tone. Reassigning <audio>.src makes
+// WebKit re-run resource selection and re-decode on every click, which is the
+// per-click lag; a pool decodes each tone once and replays it with a bare
+// seek+play. The SFX set is small and fixed, so the pool is bounded.
+const sfxPool = new Map<string, HTMLAudioElement>();
+let sfxLast: HTMLAudioElement | null = null;
+
+function ensureSfx(key: string, freq: number, dur: number, vol: number): HTMLAudioElement {
+  const hit = sfxPool.get(key);
+  if (hit) return hit;
+  if (sfxPool.size > 48) {
+    for (const stale of sfxPool.values()) stale.pause();
+    sfxPool.clear();
+    sfxLast = null;
+  }
+  // wavBlip is only called on a pool miss — generating it per click was itself
+  // a few ms of work on the click path.
+  const el = new Audio(wavBlip(freq, dur, vol));
+  el.preload = "auto";
+  sfxPool.set(key, el);
+  return el;
 }
 
-const sfxEl = new Audio();
-const sfxUrls = new Map<string, string>();
+// macOS parks an idle output device after a stretch of silence and the next
+// play() waits for it to wake — the "first click after a pause is late" lag.
+// A silent looping clip keeps an active stream so the device stays up. This is
+// safe on HTMLAudioElement, unlike the AudioContext keep-alive that left the
+// app mute: this element really does reach the speakers, which is why the blips
+// live here now. Amplitude is far below audibility.
+const keepAliveEl = new Audio();
 
-function playBlip(freq = 880, dur = 0.1, vol = 0.04) {
-  const key = `${freq}/${dur}/${vol}`;
-  let url = sfxUrls.get(key);
-  if (!url) {
-    url = wavBlip(freq, dur, vol);
-    if (sfxUrls.size > 64) sfxUrls.clear();
-    sfxUrls.set(key, url);
+function armKeepAlive(): void {
+  // Called on every gesture, not just the first: if an earlier attempt was
+  // rejected (no gesture yet, no device) this retries instead of staying mute.
+  // play() on an already-playing element is a harmless no-op.
+  void keepAliveEl.play().catch(() => { /* blocked until a later gesture */ });
+}
+
+// Every tone the UI plays, so the pool is built once instead of paying a
+// decode on a surface's first click. Durations must mirror the playBlip call
+// sites; a call site that drifts still works, it just decodes lazily.
+const SFX_TONES: [keyof typeof SFX, number][] = [
+  ["lookup", 0.1], ["coach", 0.09], ["guide", 0.09], ["guideStep", 0.08],
+  ["tab", 0.08], ["motion", 0.09], ["about", 0.1], ["save", 0.09],
+  ["image", 0.09], ["empty", 0.12], ["journey", 0.08], ["online", 0.09],
+];
+
+let audioReady = false;
+
+// Must run inside a user gesture: autoplay policy rejects play() before one.
+function initAudio(): void {
+  if (audioReady) return;
+  audioReady = true;
+  keepAliveEl.src = wavBlip(1, 0.5, 0.0002);
+  keepAliveEl.loop = true;
+  keepAliveEl.preload = "auto";
+  for (const [name, dur] of SFX_TONES) {
+    ensureSfx(`${SFX[name]}/${dur}/${SFX_VOL}`, SFX[name], dur, SFX_VOL);
   }
-  playClip(sfxEl, url);
+}
+
+function playBlip(freq = 880, dur = 0.1, vol = SFX_VOL) {
+  initAudio();
+  armKeepAlive();
+  const el = ensureSfx(`${freq}/${dur}/${vol}`, freq, dur, vol);
+  if (sfxLast && sfxLast !== el) sfxLast.pause();
+  sfxLast = el;
+  try { el.currentTime = 0; } catch { /* not ready yet */ }
+  void el.play().catch(() => { /* autoplay blocked until a later gesture */ });
 }
 
 // Pronunciation: one HTML Audio. voiceGen invalidates in-flight fetches so a
@@ -297,7 +350,11 @@ let voiceGen = 0;
 const voiceUrls = new Map<string, string>();
 
 function stopVoice(): void {
-  stopClip(voiceEl);
+  // Pause and rewind only. Clearing <audio>.src here threw away the decoded
+  // clip, so replaying the same headword re-fetched a ~200KB data URI and
+  // re-decoded it — audible as lag on the Audio button.
+  voiceEl.pause();
+  try { voiceEl.currentTime = 0; } catch { /* not seekable yet */ }
   if (typeof window !== "undefined" && "speechSynthesis" in window) {
     window.speechSynthesis.cancel();
   }
@@ -325,6 +382,10 @@ function speakHeadword(hwd: string): boolean {
 }
 
 async function playPronunciation(hwd: string): Promise<"played" | "spoke" | "none" | "cancelled"> {
+  // Keep macOS awake on this gesture too, so the very first Audio tap after a
+  // quiet stretch does not pay for the device waking up.
+  initAudio();
+  armKeepAlive();
   const gen = ++voiceGen;
   stopVoice();
   const key = hwd.toLowerCase();
@@ -2134,13 +2195,15 @@ export function HomeView() {
               saved={selectedEntry ? favorites.some((f) => f.toLowerCase() === selectedEntry.hwd.toLowerCase()) : false}
               onToggleSave={() => {
                 if (!selectedEntry) return;
+                // Feedback belongs to the press, not to the disk write: playing
+                // after the await made Save the one control that always lagged.
+                playBlip(SFX.save, 0.09);
                 void (async () => {
                   try {
                     const r = await invoke<{ saved: boolean; list: string[] }>("library:favoritesToggle", {
                       hwd: selectedEntry.hwd,
                     });
                     setFavorites(r.list ?? []);
-                    playBlip(SFX.save, 0.09);
                     toast.success(r.saved ? `Saved “${selectedEntry.hwd}”` : `Removed “${selectedEntry.hwd}” from saved`);
                   } catch (e) {
                     toast.error(String(e));
