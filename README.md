@@ -15,7 +15,7 @@ Unofficial native macOS port of the classic **Longman Exams Dictionary CD-ROM (2
 
 | Dictionary | Exams Coach | Guide | About |
 |---|---|---|---|
-| ![Dictionary entry](media/L-entry.png) | ![Exams Coach topic](media/L-coach-detail.png) | ![Guide article](media/L-guide-article.png) | ![About dialog](media/L-about.png) |
+| ![Dictionary entry](media/L-entry.png) | ![Exams Coach topic](media/L-coach-detail.png) | ![Guide contents](media/L-guide-article.png) | ![About dialog](media/L-about.png) |
 
 ## Features
 

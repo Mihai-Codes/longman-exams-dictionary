@@ -129,6 +129,13 @@ check("every tone a click path plays is pre-decoded", unpreset.length === 0);
 // 4. Shipping assets
 check("app icons present", existsSync("app-icon.png") && existsSync("app-icon.icns"));
 check("README + LICENSE present", existsSync("README.md") && existsSync("LICENSE"));
+// Every image the README embeds must exist, so a renamed screenshot cannot
+// silently become a broken image on the repo landing page.
+const readme = readFileSync("README.md", "utf8");
+const missing = [...readme.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)]
+  .map((m) => m[1])
+  .filter((p) => !/^https?:/i.test(p) && !existsSync(p));
+check("README image references resolve", missing.length === 0);
 
 if (failures.length) { console.error(`\n${failures.length} failing invariant(s)`); process.exit(1); }
 console.log("\nall invariants hold");
