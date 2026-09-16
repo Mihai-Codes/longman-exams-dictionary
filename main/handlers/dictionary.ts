@@ -491,26 +491,41 @@ export const dictionaryHandlers = {
         if (!/\.html?$/i.test(target)) return _m;
         return `${pre}help:${target}${frag || ""}${post}`;
       });
-      // One <p class="help"> carries every role in these 2006 pages: prose,
-      // catalogue lines, bold mini-headings and empty anchor wrappers. They
-      // cannot share one rhythm, and CSS cannot tell them apart from the tag
-      // alone, so label each role here — see "Paragraph rhythm" in styles.css.
-      html = html.replace(/<p class="help">([\s\S]*?)<\/p>/gi, (m: string, inner: string) => {
+      // Every paragraph in these 2006 pages shares one tag and plays one of
+      // several roles — prose, catalogue line, bold mini-heading, empty
+      // anchor wrapper — so CSS cannot give them separate rhythm from the tag
+      // alone. Label each role here; styles.css spaces them. Matches <p> with
+      // ANY attributes: the legal notices use bare <p> and <p class="help">,
+      // and an earlier version keyed only on the latter, leaving those blocks
+      // unlabelled.
+      html = html.replace(/<p\b([^>]*)>([\s\S]*?)<\/p>/gi, (m: string, attrs: string, inner: string) => {
         const t = inner.trim();
-        // Whitespace-only filler (2006 layout hacks) carried no text; dropping
-        // it removes phantom gaps between real paragraphs.
+        // Whitespace/nbsp-only filler carried no text; dropping it removes
+        // phantom gaps between real paragraphs.
         if (!t || /^&nbsp;$/i.test(t)) return "";
         // Anchor-only wrapper: keep the target so fragment links still land,
-        // drop the paragraph so it adds no height of its own.
+        // drop the block so it adds no height of its own.
         if (/^<a\s+name="[^"]*"\s*><\/a>$/i.test(t)) return t;
+        // attrs is the capture between <p and >, so it carries its own leading
+        // space (e.g. ' class="help"'). Rebuild the tag from its parts so
+        // spacing stays valid whether a class, other attrs (align=...), or
+        // neither was present — <p + class="..." with no space is an
+        // invalid tag name, which the bare <p> in the legal notices hits.
+        const withRole = (role: string) => {
+          const attrText = attrs.trim();
+          const cls = /\bclass="([^"]*)"/i.exec(attrText)?.[1]?.trim() ?? "";
+          const others = attrText.replace(/\s*\bclass="[^"]*"/i, "").trim();
+          const classes = [cls, role].filter(Boolean).join(" ");
+          return `<p${others ? ` ${others}` : ""} class="${classes}">${inner}</p>`;
+        };
         // Bold spanning the whole line — a mini-heading, not a paragraph.
-        if (/^<b>[^<]*<\/b>$/i.test(t)) return `<p class="help subhead">${inner}</p>`;
+        if (/^<b>[^<]*<\/b>$/i.test(t)) return withRole("subhead");
         // Link-led line with no sentence punctuation — a catalogue entry, which
         // reads as a tight list. Sentences that merely start with a link fall
-        // through to prose and keep the paragraph gap and indent.
+        // through to prose and keep the paragraph gap.
         const visible = t.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
         if (/^<a\s/i.test(t) && !/[.!?:]$/.test(visible) && visible.length <= 140) {
-          return `<p class="help navline">${inner}</p>`;
+          return withRole("navline");
         }
         return m;
       });

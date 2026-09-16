@@ -88,6 +88,23 @@ const footer = /className="app-footer[\s\S]*?<\/div>/.exec(src)?.[0] ?? "";
 check("footer present", footer.length > 0);
 check("footer does not repeat a nav menu name", !/Exams Coach/.test(footer));
 check("'Fully offline' claimed once", (src.match(/Fully offline/g) ?? []).length === 1);
+// Guide paragraph rhythm is a deliberate accessibility call (ragged-right, no
+// indent), not a whim — see the "Paragraph rhythm" block in styles.css. These
+// keep justify and first-line-indent from creeping back into the rule that
+// governs every Guide page.
+const css = readFileSync("renderer/styles.css", "utf8");
+const guideP = /\.led-guide-html\s+p\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+check("guide prose rule found", guideP.length > 0);
+check("guide prose is left-aligned, not justified", !/text-align:\s*justify/.test(guideP));
+// Read the indent value outright: an earlier lookahead form flagged
+// `text-indent: 0` (the correct value) as a violation.
+const guideIndent = /text-indent:\s*([^;}]+)/.exec(guideP)?.[1]?.trim();
+check("guide paragraphs space by margin, not first-line indent",
+  guideIndent === undefined || guideIndent === "0");
+// The article wrapper stays free of [&_p]: spacing/alignment variants so this
+// rule in styles.css is the single source of truth for paragraph rhythm.
+check("guide paragraph rhythm lives only in styles.css",
+  !/\[_p\]:(?:text-justify|text-align|text-indent)/.test(src));
 
 // 4. Shipping assets
 check("app icons present", existsSync("app-icon.png") && existsSync("app-icon.icns"));
