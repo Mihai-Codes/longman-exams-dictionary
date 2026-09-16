@@ -1630,7 +1630,7 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
                 translucent tab bar. */}
             <div
               ref={articleRef}
-              className="led-guide-html [&_h3]:text-[var(--text-heading)] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:mt-5 [&_h3]:mb-2 [&_h2]:text-[var(--text-heading)] [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-1 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:my-2 [&_li]:my-1 [&_li]:text-[var(--text-large)] [&_li]:leading-[var(--text-large-leading)] [&_p]:my-2 [&_p]:text-[var(--text-large)] [&_p]:leading-[var(--text-large-leading)] [&_p]:text-justify [&_p]:text-indent-[1.25em] [&_a]:underline [&_a]:cursor-pointer [&_img]:rounded-lg [&_img]:my-3 [&_img]:max-w-full"
+              className="led-guide-html [&_h3]:text-[var(--text-heading)] [&_h3]:font-semibold [&_h3]:tracking-tight [&_h3]:mt-5 [&_h3]:mb-2 [&_h2]:text-[var(--text-heading)] [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-1 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:my-2 [&_li]:my-1 [&_li]:text-[var(--text-large)] [&_li]:leading-[var(--text-large-leading)] [&_a]:underline [&_a]:cursor-pointer [&_img]:rounded-lg [&_img]:my-3 [&_img]:max-w-full"
               dangerouslySetInnerHTML={{ __html: article.html }}
               onClick={(e) => {
                 const a = (e.target as HTMLElement).closest?.("a[href]");

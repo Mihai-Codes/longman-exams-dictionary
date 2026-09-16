@@ -491,6 +491,29 @@ export const dictionaryHandlers = {
         if (!/\.html?$/i.test(target)) return _m;
         return `${pre}help:${target}${frag || ""}${post}`;
       });
+      // One <p class="help"> carries every role in these 2006 pages: prose,
+      // catalogue lines, bold mini-headings and empty anchor wrappers. They
+      // cannot share one rhythm, and CSS cannot tell them apart from the tag
+      // alone, so label each role here — see "Paragraph rhythm" in styles.css.
+      html = html.replace(/<p class="help">([\s\S]*?)<\/p>/gi, (m: string, inner: string) => {
+        const t = inner.trim();
+        // Whitespace-only filler (2006 layout hacks) carried no text; dropping
+        // it removes phantom gaps between real paragraphs.
+        if (!t || /^&nbsp;$/i.test(t)) return "";
+        // Anchor-only wrapper: keep the target so fragment links still land,
+        // drop the paragraph so it adds no height of its own.
+        if (/^<a\s+name="[^"]*"\s*><\/a>$/i.test(t)) return t;
+        // Bold spanning the whole line — a mini-heading, not a paragraph.
+        if (/^<b>[^<]*<\/b>$/i.test(t)) return `<p class="help subhead">${inner}</p>`;
+        // Link-led line with no sentence punctuation — a catalogue entry, which
+        // reads as a tight list. Sentences that merely start with a link fall
+        // through to prose and keep the paragraph gap and indent.
+        const visible = t.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+        if (/^<a\s/i.test(t) && !/[.!?:]$/.test(visible) && visible.length <= 140) {
+          return `<p class="help navline">${inner}</p>`;
+        }
+        return m;
+      });
       return { file: safe, title, html };
     } catch {
       return null;

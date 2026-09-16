@@ -275,6 +275,50 @@ body {
 .led-guide-html > :first-child {
   margin-top: 0;
 }
+
+/* Paragraph rhythm. helpPage() labels every <p class="help"> by role, because
+   one tag carries four jobs in the 2006 pages and they cannot share a single
+   rhythm: prose gets a clear gap plus a soft indent, catalogue lines stay a
+   tight list, mini-headings hug the text they introduce, and table cells get
+   none at all. Guide paragraph spacing lives here, not as arbitrary variants
+   on the article wrapper. */
+.led-guide-html p {
+  margin: 0 0 0.95rem;
+  text-align: justify;
+  text-indent: 1.25em;
+}
+.led-guide-html p:last-child {
+  margin-bottom: 0;
+}
+/* A mini-heading belongs to what follows it, not to what came before. */
+.led-guide-html p.subhead {
+  margin: 1.4rem 0 0.3rem;
+  font-weight: 600;
+  text-indent: 0;
+  text-align: left;
+}
+.led-guide-html p.subhead + p {
+  margin-top: 0;
+  text-indent: 0;
+}
+/* Guide contents and index lists: tight, hanging, never justified. */
+.led-guide-html p.navline {
+  margin: 0 0 0.4rem;
+  padding-left: 1.25em;
+  text-indent: -1.25em;
+  text-align: left;
+}
+/* Tables are dense by design — a paragraph gap or hanging indent in every
+   cell would turn the frequency and contents tables into a stack of boxes.
+   :is() lifts this above the .navline / .subhead rules below, since the
+   contents tables in dictmenu hold link-only paragraphs that would otherwise
+   win on specificity and inherit the list styling inside a <td>. */
+.led-guide-html :is(td, th) :is(p, p.help, p.navline, p.subhead) {
+  margin: 0;
+  padding-left: 0;
+  text-indent: 0;
+  text-align: left;
+}
 .led-guide-html a {
   color: var(--theme-accent);
   text-underline-offset: 2px;
