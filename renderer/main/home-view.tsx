@@ -205,10 +205,11 @@ const DETAIL_IN: { keyframes: Keyframe[]; options: KeyframeAnimationOptions } = 
   options: { duration: 240, easing: "ease-out", fill: "both" },
 };
 
-let sharedCtx: AudioContext | null = null;
-
-// One voice per surface — each menu and chrome action gets its own pitch,
-// so ears can tell where they are without looking. Short sine blips.
+// One HTML Audio per surface. Web Audio in WKWebView can sit `running` with
+// a silent keep-alive oscillator and then never emit — Safari power-saving
+// (https://www.reddit.com/r/webdev/comments/1ldjqa1). HTMLAudioElement is
+// the path that actually reaches the speakers. Pause-then-play so a second
+// click cannot stack, and a late fetch cannot overlap.
 const SFX = {
   lookup: 880, // Dictionary: word opened
   coach: 1174.7, // Exams Coach: topic / exam guide chosen
@@ -224,100 +225,83 @@ const SFX = {
   online: 1318.5, // current entry opened on ldoceonline.com
 };
 
-// One context for blips and pronunciation. A BufferSource can only start()
-// once — MDN: create a new node per play, reuse the AudioBuffer.
-// HTML Audio stacked a new element per click, so a second Audio (or a late
-// fetch for the previous word) overlapped and sounded like the wrong clip.
-function audioContext(): AudioContext | null {
-  try {
-    const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!sharedCtx || sharedCtx.state === "closed") {
-      // "interactive" latency: smallest output buffer, so a scheduled blip
-      // reaches the speakers in ~10ms rather than the default larger buffer.
-      sharedCtx = new Ctor({ latencyHint: "interactive" });
-      // Keep-alive: a zero-gain oscillator renders the output stream
-      // forever. Without an active stream, macOS puts the audio device to
-      // sleep after ~30s of silence and the first blip after idle waits
-      // for the device to wake (~300ms+) — the laggy-click symptom that
-      // resume() alone cannot fix. Silent rendering costs ~nothing.
-      const keepGain = sharedCtx.createGain();
-      keepGain.gain.value = 0;
-      const keepOsc = sharedCtx.createOscillator();
-      keepOsc.connect(keepGain).connect(sharedCtx.destination);
-      keepOsc.start();
-    }
-    return sharedCtx;
-  } catch {
-    return null;
-  }
-}
-
-function withRunningContext(fn: (ctx: AudioContext) => void): void {
-  const ctx = audioContext();
-  if (!ctx) return;
-  if (ctx.state === "running") {
-    fn(ctx);
-    return;
-  }
-  void ctx.resume().then(() => fn(ctx)).catch(() => { /* no audio device */ });
-}
-
-function startBuffer(ctx: AudioContext, buf: AudioBuffer): AudioBufferSourceNode {
-  const src = ctx.createBufferSource();
-  src.buffer = buf;
-  src.connect(ctx.destination);
-  src.start();
-  return src;
-}
-
-// Pre-rendered blip waveforms, one per (freq, dur, vol). The SFX set is
-// fixed and tiny, so each tone is rendered once and replayed with a bare
-// BufferSource.start() — the lightest possible node graph, no per-play
-// OscillatorNode/GainNode construction and no envelope automation.
-const blipBuffers = new Map<string, AudioBuffer>();
-
-// Matches the old oscillator envelope: gain vol at t=0, exponential ramp to
-// 0.0001 at t=dur, then a 30ms tail to silence (no click at the cutoff).
-function renderBlip(ctx: AudioContext, freq: number, dur: number, vol: number): AudioBuffer {
-  const sr = ctx.sampleRate;
-  const len = Math.ceil(sr * (dur + 0.03));
-  const buf = ctx.createBuffer(1, len, sr);
-  const data = buf.getChannelData(0);
-  const decay = Math.pow(0.0001 / vol, 1 / dur); // per-second ramp factor
-  for (let i = 0; i < len; i++) {
+function wavBlip(freq: number, dur: number, vol: number): string {
+  const sr = 22050;
+  const n = Math.ceil(sr * (dur + 0.03));
+  const dataSize = n * 2;
+  const buf = new ArrayBuffer(44 + dataSize);
+  const v = new DataView(buf);
+  const ascii = (o: number, s: string) => {
+    for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i));
+  };
+  ascii(0, "RIFF");
+  v.setUint32(4, 36 + dataSize, true);
+  ascii(8, "WAVE");
+  ascii(12, "fmt ");
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true);
+  v.setUint32(28, sr * 2, true);
+  v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true);
+  ascii(36, "data");
+  v.setUint32(40, dataSize, true);
+  const decay = Math.pow(0.0001 / Math.max(vol, 1e-6), 1 / dur);
+  for (let i = 0; i < n; i++) {
     const t = i / sr;
-    data[i] = Math.sin(2 * Math.PI * freq * t) * vol * Math.pow(decay, t);
+    const s = Math.sin(2 * Math.PI * freq * t) * vol * Math.pow(decay, t);
+    v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, s)) * 32767, true);
   }
-  return buf;
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return `data:audio/wav;base64,${btoa(bin)}`;
 }
 
-function startBlip(ctx: AudioContext, freq: number, dur: number, vol: number): void {
-  const key = `${freq}/${dur}/${vol}`;
-  let buf = blipBuffers.get(key);
-  if (!buf) {
-    buf = renderBlip(ctx, freq, dur, vol);
-    if (blipBuffers.size > 64) blipBuffers.clear();
-    blipBuffers.set(key, buf);
+function playClip(el: HTMLAudioElement, url: string): void {
+  el.pause();
+  if (el.src === url) {
+    try { el.currentTime = 0; } catch { /* not seekable yet */ }
+  } else {
+    el.src = url;
   }
-  startBuffer(ctx, buf);
+  void el.play().catch(() => { /* autoplay blocked until a later gesture */ });
 }
+
+function stopClip(el: HTMLAudioElement | null): void {
+  if (!el) return;
+  el.pause();
+  el.removeAttribute("src");
+  try { el.load(); } catch { /* nothing loaded */ }
+}
+
+const sfxEl = new Audio();
+const sfxUrls = new Map<string, string>();
 
 function playBlip(freq = 880, dur = 0.1, vol = 0.04) {
-  withRunningContext((ctx) => startBlip(ctx, freq, dur, vol));
+  const key = `${freq}/${dur}/${vol}`;
+  let url = sfxUrls.get(key);
+  if (!url) {
+    url = wavBlip(freq, dur, vol);
+    if (sfxUrls.size > 64) sfxUrls.clear();
+    sfxUrls.set(key, url);
+  }
+  playClip(sfxEl, url);
 }
 
-// Pronunciation: one source at a time. voiceGen invalidates in-flight fetches
-// so a late reply for word A cannot start after the user asked for word B.
-let voiceSource: AudioBufferSourceNode | null = null;
+function playBlipIfNotPressed(freq: number, dur = 0.09) {
+  playBlip(freq, dur);
+}
+
+// Pronunciation: one HTML Audio. voiceGen invalidates in-flight fetches so a
+// late reply for word A cannot start after the user asked for word B.
+const voiceEl = new Audio();
 let voiceGen = 0;
-const voiceBuffers = new Map<string, AudioBuffer>();
+const voiceUrls = new Map<string, string>();
 
 function stopVoice(): void {
-  if (voiceSource) {
-    try { voiceSource.stop(); } catch { /* already ended */ }
-    try { voiceSource.disconnect(); } catch { /* already disconnected */ }
-    voiceSource = null;
-  }
+  stopClip(voiceEl);
   if (typeof window !== "undefined" && "speechSynthesis" in window) {
     window.speechSynthesis.cancel();
   }
@@ -326,15 +310,6 @@ function stopVoice(): void {
 function bumpVoice(): void {
   voiceGen += 1;
   stopVoice();
-}
-
-function playDecoded(buf: AudioBuffer): void {
-  withRunningContext((ctx) => {
-    stopVoice();
-    const src = startBuffer(ctx, buf);
-    src.onended = () => { if (voiceSource === src) voiceSource = null; };
-    voiceSource = src;
-  });
 }
 
 function speakHeadword(hwd: string): boolean {
@@ -357,33 +332,26 @@ async function playPronunciation(hwd: string): Promise<"played" | "spoke" | "non
   const gen = ++voiceGen;
   stopVoice();
   const key = hwd.toLowerCase();
-  const ctx = audioContext();
-  if (ctx && ctx.state !== "running") {
-    try { await ctx.resume(); } catch { /* stay silent until a later click */ }
-  }
-  if (gen !== voiceGen) return "cancelled";
-  let buf = voiceBuffers.get(key);
-  if (!buf && ctx) {
+  let url = voiceUrls.get(key);
+  if (!url) {
     try {
-      const url = await invoke<string | null>("dictionary:audio", { hwd });
+      const next = await invoke<string | null>("dictionary:audio", { hwd });
       if (gen !== voiceGen) return "cancelled";
-      if (url) {
-        const raw = await (await fetch(url)).arrayBuffer();
-        if (gen !== voiceGen) return "cancelled";
-        buf = await ctx.decodeAudioData(raw.slice(0));
-        if (voiceBuffers.size > 64) {
-          const first = voiceBuffers.keys().next().value;
-          if (first !== undefined) voiceBuffers.delete(first);
+      if (next) {
+        if (voiceUrls.size > 64) {
+          const first = voiceUrls.keys().next().value;
+          if (first !== undefined) voiceUrls.delete(first);
         }
-        voiceBuffers.set(key, buf);
+        voiceUrls.set(key, next);
+        url = next;
       }
     } catch {
       /* fall through to speech */
     }
   }
   if (gen !== voiceGen) return "cancelled";
-  if (buf) {
-    playDecoded(buf);
+  if (url) {
+    playClip(voiceEl, url);
     return "played";
   }
   if (speakHeadword(hwd)) return "spoke";
@@ -526,13 +494,13 @@ function DictionaryTabs({
                     }}
                   />
                 )}
-                <span data-tab="dictionary" className="flex">
+                <span data-tab="dictionary" data-sfx="tab" data-sfx-dur="0.08" className="flex">
                   <TabsTrigger value="dictionary">Dictionary</TabsTrigger>
                 </span>
-                <span data-tab="coach" className="flex">
+                <span data-tab="coach" data-sfx="tab" data-sfx-dur="0.08" className="flex">
                   <TabsTrigger value="coach">Exams Coach</TabsTrigger>
                 </span>
-                <span data-tab="guide" className="flex">
+                <span data-tab="guide" data-sfx="tab" data-sfx-dur="0.08" className="flex">
                   <TabsTrigger value="guide">Guide</TabsTrigger>
                 </span>
               </div>
@@ -543,6 +511,7 @@ function DictionaryTabs({
           <Button
             variant="transparent"
             size="small"
+            data-sfx="motion"
             title={motionIsOn ? "Motion always plays in full" : "Motion follows your Mac setting"}
             aria-label={motionIsOn ? "Turn motion effects off" : "Turn motion effects on"}
             onClick={onToggleMotion}
@@ -553,7 +522,7 @@ function DictionaryTabs({
               {motionIsOn ? "On" : "Auto"}
             </span>
           </Button>
-          <Button variant="transparent" size="small" onClick={onAbout} aria-label="About">
+          <Button variant="transparent" size="small" data-sfx="about" data-sfx-dur="0.1" onClick={onAbout} aria-label="About">
             <InfoIcon className="size-4" />
             About
           </Button>
@@ -692,6 +661,7 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
               <Button
                 variant="transparent"
                 className="active:scale-95 transition-transform"
+                data-sfx="save"
                 onClick={onToggleSave}
                 aria-label={saved ? "Remove from saved words" : "Save this word"}
               >
@@ -722,12 +692,14 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
               <Button
                 variant="transparent"
                 className="active:scale-95 transition-transform"
+                data-sfx={entry.previewId ? "image" : "empty"}
+                data-sfx-dur={entry.previewId ? "0.09" : "0.12"}
                 onClick={() => {
                   if (entry.previewId) {
                     setShowImage(true);
-                    playBlip(SFX.image, 0.09);
+                    playBlipIfNotPressed(SFX.image, 0.09);
                   } else {
-                    playBlip(SFX.empty, 0.12);
+                    playBlipIfNotPressed(SFX.empty, 0.12);
                     toast.info(`No illustration for “${entry.hwd}”`);
                   }
                 }}
@@ -854,7 +826,7 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
                   return (
                     <div className="leading-relaxed border-t border-separator/50 pt-2 space-y-1">
                       {see ? (
-                        <button onClick={() => onLookup(see[1])} className="cursor-pointer" title={`Look up ${see[1].toLowerCase()}`}>
+                        <button data-sfx="lookup" onClick={() => onLookup(see[1])} className="cursor-pointer" title={`Look up ${see[1].toLowerCase()}`}>
                           <Text variant="small" color="tertiary">
                             See note at <span className="underline" style={{ color: "var(--theme-accent)" }}>{see[1].toLowerCase()}{/(\s+\d+)$/.exec(lead.trim())?.[1] ?? ""}</span>
                           </Text>
@@ -929,8 +901,9 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
           app stays offline-first; nothing is fetched without asking. */}
       <div className="flex justify-center pt-1 pb-2">
         <button
+          data-sfx="online"
           onClick={() => {
-            playBlip(SFX.online, 0.09);
+            playBlipIfNotPressed(SFX.online, 0.09);
             void (async () => {
               try {
                 await invoke<boolean>("shell:openOnline", { hwd: entry.hwd });
@@ -1112,7 +1085,7 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
               <Text variant="small-strong" color="secondary" className="uppercase tracking-widest text-support-red">Exam guides</Text>
               <div className="flex flex-wrap gap-1.5 mt-1.5">
                 {EXAM_GUIDES.map(([label, file]) => (
-                  <button key={file} onClick={() => { playBlip(SFX.coach, 0.09); onOpenGuide(file); }} className="cursor-pointer" title={`How the ${label} exam works`}>
+                  <button key={file} data-sfx="coach" onClick={() => { playBlipIfNotPressed(SFX.coach, 0.09); onOpenGuide(file); }} className="cursor-pointer" title={`How the ${label} exam works`}>
                     <Badge color="secondary">{label}</Badge>
                   </button>
                 ))}
@@ -1140,12 +1113,12 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
               selectedItem={selected}
               onSelectedItemChange={(item) => {
                 setSelected(item as unknown as Topic);
-                playBlip(SFX.coach, 0.09);
+                playBlipIfNotPressed(SFX.coach, 0.09);
               }}
               getItemKey={(t: Topic) => t.topic}
             >
               {visibleTopics.map((t) => (
-                <List.Item key={t.topic} item={t as any}>
+                <List.Item key={t.topic} item={t as any} data-sfx="coach">
                   <List.ItemContent>
                     <List.ItemTitle className="flex items-center gap-1.5">
                       <span className="truncate">{t.topic}</span>
@@ -1214,13 +1187,14 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
                     return (
                       <button
                         key={w}
+                        data-sfx={g ? "lookup" : "coach"}
                         onClick={() => {
                           if (g) {
                             onLookup(g.hwd);
                             return;
                           }
                           if (topicHit) {
-                            playBlip(SFX.coach, 0.09);
+                            playBlipIfNotPressed(SFX.coach, 0.09);
                             setQuery("");
                             setSelected(topicHit);
                             return;
@@ -1342,7 +1316,7 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
   const step = (d: number) => {
     const i = Math.min(Math.max(nav.i + d, 0), nav.hist.length - 1);
     if (i === nav.i || nav.hist.length === 0) return;
-    playBlip(SFX.guideStep, 0.08);
+    playBlipIfNotPressed(SFX.guideStep, 0.08);
     const p = pages.find((pg) => pg.file === nav.hist[i]);
     if (p) {
       const j = GUIDE_JOURNEYS.find((gj) => inFiles(gj.files, p.file));
@@ -1490,11 +1464,11 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
     <List.Root
       items={items}
       selectedItem={selected}
-      onSelectedItemChange={(item) => { openPage(item as unknown as HelpPage); playBlip(SFX.guide, 0.09); }}
+      onSelectedItemChange={(item) => { openPage(item as unknown as HelpPage); playBlipIfNotPressed(SFX.guide, 0.09); }}
       getItemKey={(t: HelpPage) => t.file}
     >
       {items.map((t) => (
-        <List.Item key={t.file} item={t as any}>
+        <List.Item key={t.file} item={t as any} data-sfx="guide">
           <List.ItemContent>
             <List.ItemTitle>
               {/* Native tooltip: long CD titles ("...Writing Assis|tant")
@@ -1571,11 +1545,11 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
               <SearchInput value={query} onChange={setQuery} ghost="" onClearGhost={() => {}} loading={false} inputRef={guideInputRef} placeholder="Search guide pages" />
               </div>
               <div className="flex flex-wrap gap-1.5 mt-3">
-              <button key="all" onClick={() => { setJourney("all"); playBlip(SFX.journey, 0.08); }} className="cursor-pointer">
+              <button key="all" data-sfx="journey" data-sfx-dur="0.08" onClick={() => { setJourney("all"); playBlipIfNotPressed(SFX.journey, 0.08); }} className="cursor-pointer">
                 <Badge color="secondary" className={journey === "all" ? "font-semibold ring-1 ring-[var(--theme-accent)]" : undefined}>All</Badge>
               </button>
               {GUIDE_JOURNEYS.map((j) => (
-                <button key={j.key} onClick={() => { setJourney(j.key); playBlip(SFX.journey, 0.08); }} className="cursor-pointer" title={j.blurb}>
+                <button key={j.key} data-sfx="journey" data-sfx-dur="0.08" onClick={() => { setJourney(j.key); playBlipIfNotPressed(SFX.journey, 0.08); }} className="cursor-pointer" title={j.blurb}>
                   <Badge color="secondary" className={journey === j.key ? "font-semibold ring-1 ring-[var(--theme-accent)]" : undefined}>{j.title}</Badge>
                 </button>
               ))}
@@ -1628,6 +1602,7 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
                 (no disabled/focus/hover disc can ever paint here). step()
                 itself guards the ends; unusable ones stay invisible. */}
             <button
+              data-sfx="guideStep" data-sfx-dur="0.08"
               onClick={(e) => { step(-1); e.currentTarget.blur(); }}
               aria-label="Back"
               title="Back"
@@ -1636,6 +1611,7 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
               <ChevronLeftIcon className="size-4" />
             </button>
             <button
+              data-sfx="guideStep" data-sfx-dur="0.08"
               onClick={(e) => { step(1); e.currentTarget.blur(); }}
               aria-label="Forward"
               title="Forward"
@@ -1678,14 +1654,14 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
                   if (next) {
                     setPendingFrag(frag || null);
                     openPage(next);
-                    playBlip(SFX.guide, 0.09);
+                    playBlipIfNotPressed(SFX.guide, 0.09);
                   } else {
                     toast.error("That help page wasn't included on the disc");
                   }
                 } else if (href.startsWith("coach:")) {
                   e.preventDefault();
                   onOpenCoach(href.slice(6).trim() || null);
-                  playBlip(SFX.coach, 0.09);
+                  playBlipIfNotPressed(SFX.coach, 0.09);
                 } else if (href.startsWith("#")) {
                   e.preventDefault();
                   const id = href.slice(1);
@@ -1885,7 +1861,6 @@ export function HomeView() {
         setSelectedEntry(e);
         if (!userPicked.current) return;
         userPicked.current = false;
-        playBlip(SFX.lookup);
         lookup(selected.hwd);
         try {
           const h = await invoke<string[]>("library:historyPush", { hwd: selected.hwd });
@@ -1908,6 +1883,7 @@ export function HomeView() {
   // related-words and mistake-note cross-references.
   const lookupWord = (hwd: string) => {
     userPicked.current = true;
+    playBlipIfNotPressed(SFX.lookup);
     const q = hwd.toLowerCase();
     setQuery(q);
     setActiveTab("dictionary");
@@ -1928,7 +1904,7 @@ export function HomeView() {
       {/* Hidden drag region for window */}
       <div className="h-0 drag-region" />
 
-      <DictionaryTabs activeTab={activeTab} onChange={(v) => { setActiveTab(v); playBlip(SFX.tab, 0.08); }} onAbout={() => { setShowAbout(true); playBlip(SFX.about, 0.1); }} motionIsOn={motionIsOn} onToggleMotion={() => { setMotionIsOn((m) => !m); playBlip(SFX.motion, 0.09); }} />
+      <DictionaryTabs activeTab={activeTab} onChange={(v) => { setActiveTab(v); playBlipIfNotPressed(SFX.tab, 0.08); }} onAbout={() => { setShowAbout(true); playBlipIfNotPressed(SFX.about, 0.1); }} motionIsOn={motionIsOn} onToggleMotion={() => { setMotionIsOn((m) => !m); playBlipIfNotPressed(SFX.motion, 0.09); }} />
 
       {/* NOTE: title+description must stay SET (hidden, not removed). Glaze
           Dialog only takes the modal/portal path when trigger, title,
@@ -2038,8 +2014,10 @@ export function HomeView() {
                           {history.slice(0, 5).map((h) => (
                             <button
                               key={`h-${h}`}
+                              data-sfx="lookup"
                               onClick={() => {
                                 userPicked.current = true;
+                                playBlipIfNotPressed(SFX.lookup);
                                 setQuery(h);
                               }}
                               className="cursor-pointer"
@@ -2061,8 +2039,10 @@ export function HomeView() {
                           {favorites.map((f) => (
                             <button
                               key={`f-${f}`}
+                              data-sfx="lookup"
                               onClick={() => {
                                 userPicked.current = true;
+                                playBlipIfNotPressed(SFX.lookup);
                                 setQuery(f);
                               }}
                               className="cursor-pointer"
@@ -2097,12 +2077,13 @@ export function HomeView() {
                 selectedItem={selected}
                 onSelectedItemChange={(item) => {
                   userPicked.current = true;
+                  playBlipIfNotPressed(SFX.lookup);
                   setSelected(item as unknown as SearchResult);
                 }}
                 getItemKey={(r: SearchResult) => String(r.id)}
               >
                 {results.map((r) => (
-                  <List.Item key={r.id} item={r as any}>
+                  <List.Item key={r.id} item={r as any} data-sfx="lookup">
                     <List.ItemContent>
                       <List.ItemTitle className="flex items-center gap-1.5">
                         <span className="truncate">{r.hwd}</span>
@@ -2172,7 +2153,7 @@ export function HomeView() {
                       hwd: selectedEntry.hwd,
                     });
                     setFavorites(r.list ?? []);
-                    playBlip(SFX.save, 0.09);
+                    playBlipIfNotPressed(SFX.save, 0.09);
                     toast.success(r.saved ? `Saved “${selectedEntry.hwd}”` : `Removed “${selectedEntry.hwd}” from saved`);
                   } catch (e) {
                     toast.error(String(e));
