@@ -290,10 +290,6 @@ function playBlip(freq = 880, dur = 0.1, vol = 0.04) {
   playClip(sfxEl, url);
 }
 
-function playBlipIfNotPressed(freq: number, dur = 0.09) {
-  playBlip(freq, dur);
-}
-
 // Pronunciation: one HTML Audio. voiceGen invalidates in-flight fetches so a
 // late reply for word A cannot start after the user asked for word B.
 const voiceEl = new Audio();
@@ -494,13 +490,13 @@ function DictionaryTabs({
                     }}
                   />
                 )}
-                <span data-tab="dictionary" data-sfx="tab" data-sfx-dur="0.08" className="flex">
+                <span data-tab="dictionary" className="flex">
                   <TabsTrigger value="dictionary">Dictionary</TabsTrigger>
                 </span>
-                <span data-tab="coach" data-sfx="tab" data-sfx-dur="0.08" className="flex">
+                <span data-tab="coach" className="flex">
                   <TabsTrigger value="coach">Exams Coach</TabsTrigger>
                 </span>
-                <span data-tab="guide" data-sfx="tab" data-sfx-dur="0.08" className="flex">
+                <span data-tab="guide" className="flex">
                   <TabsTrigger value="guide">Guide</TabsTrigger>
                 </span>
               </div>
@@ -511,7 +507,6 @@ function DictionaryTabs({
           <Button
             variant="transparent"
             size="small"
-            data-sfx="motion"
             title={motionIsOn ? "Motion always plays in full" : "Motion follows your Mac setting"}
             aria-label={motionIsOn ? "Turn motion effects off" : "Turn motion effects on"}
             onClick={onToggleMotion}
@@ -522,7 +517,7 @@ function DictionaryTabs({
               {motionIsOn ? "On" : "Auto"}
             </span>
           </Button>
-          <Button variant="transparent" size="small" data-sfx="about" data-sfx-dur="0.1" onClick={onAbout} aria-label="About">
+          <Button variant="transparent" size="small" onClick={onAbout} aria-label="About">
             <InfoIcon className="size-4" />
             About
           </Button>
@@ -661,7 +656,6 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
               <Button
                 variant="transparent"
                 className="active:scale-95 transition-transform"
-                data-sfx="save"
                 onClick={onToggleSave}
                 aria-label={saved ? "Remove from saved words" : "Save this word"}
               >
@@ -692,14 +686,12 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
               <Button
                 variant="transparent"
                 className="active:scale-95 transition-transform"
-                data-sfx={entry.previewId ? "image" : "empty"}
-                data-sfx-dur={entry.previewId ? "0.09" : "0.12"}
                 onClick={() => {
                   if (entry.previewId) {
                     setShowImage(true);
-                    playBlipIfNotPressed(SFX.image, 0.09);
+                    playBlip(SFX.image, 0.09);
                   } else {
-                    playBlipIfNotPressed(SFX.empty, 0.12);
+                    playBlip(SFX.empty, 0.12);
                     toast.info(`No illustration for “${entry.hwd}”`);
                   }
                 }}
@@ -826,7 +818,7 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
                   return (
                     <div className="leading-relaxed border-t border-separator/50 pt-2 space-y-1">
                       {see ? (
-                        <button data-sfx="lookup" onClick={() => onLookup(see[1])} className="cursor-pointer" title={`Look up ${see[1].toLowerCase()}`}>
+                        <button onClick={() => onLookup(see[1])} className="cursor-pointer" title={`Look up ${see[1].toLowerCase()}`}>
                           <Text variant="small" color="tertiary">
                             See note at <span className="underline" style={{ color: "var(--theme-accent)" }}>{see[1].toLowerCase()}{/(\s+\d+)$/.exec(lead.trim())?.[1] ?? ""}</span>
                           </Text>
@@ -901,9 +893,8 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
           app stays offline-first; nothing is fetched without asking. */}
       <div className="flex justify-center pt-1 pb-2">
         <button
-          data-sfx="online"
           onClick={() => {
-            playBlipIfNotPressed(SFX.online, 0.09);
+            playBlip(SFX.online, 0.09);
             void (async () => {
               try {
                 await invoke<boolean>("shell:openOnline", { hwd: entry.hwd });
@@ -1085,7 +1076,7 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
               <Text variant="small-strong" color="secondary" className="uppercase tracking-widest text-support-red">Exam guides</Text>
               <div className="flex flex-wrap gap-1.5 mt-1.5">
                 {EXAM_GUIDES.map(([label, file]) => (
-                  <button key={file} data-sfx="coach" onClick={() => { playBlipIfNotPressed(SFX.coach, 0.09); onOpenGuide(file); }} className="cursor-pointer" title={`How the ${label} exam works`}>
+                  <button key={file} onClick={() => { playBlip(SFX.coach, 0.09); onOpenGuide(file); }} className="cursor-pointer" title={`How the ${label} exam works`}>
                     <Badge color="secondary">{label}</Badge>
                   </button>
                 ))}
@@ -1113,12 +1104,12 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
               selectedItem={selected}
               onSelectedItemChange={(item) => {
                 setSelected(item as unknown as Topic);
-                playBlipIfNotPressed(SFX.coach, 0.09);
+                playBlip(SFX.coach, 0.09);
               }}
               getItemKey={(t: Topic) => t.topic}
             >
               {visibleTopics.map((t) => (
-                <List.Item key={t.topic} item={t as any} data-sfx="coach">
+                <List.Item key={t.topic} item={t as any}>
                   <List.ItemContent>
                     <List.ItemTitle className="flex items-center gap-1.5">
                       <span className="truncate">{t.topic}</span>
@@ -1187,14 +1178,13 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
                     return (
                       <button
                         key={w}
-                        data-sfx={g ? "lookup" : "coach"}
                         onClick={() => {
                           if (g) {
                             onLookup(g.hwd);
                             return;
                           }
                           if (topicHit) {
-                            playBlipIfNotPressed(SFX.coach, 0.09);
+                            playBlip(SFX.coach, 0.09);
                             setQuery("");
                             setSelected(topicHit);
                             return;
@@ -1239,7 +1229,8 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
                     );
                   })}
                 </div>
-                <Text variant="small" color="tertiary" className="mt-3">
+                <Separator className="my-3" />
+                <Text variant="small" color="tertiary">
                   Tap a headword to look it up, or a topic to open it.
                 </Text>
               </div>
@@ -1260,10 +1251,10 @@ type HelpArticle = { file: string; title: string; html: string };
 // one journey. Order is reading order (parent before child, related pages
 // together); GUIDE_RANK and the side panel both walk this list.
 const GUIDE_JOURNEYS: { key: string; title: string; blurb: string; files: string[] }[] = [
-  { key: "start", title: "Start here", blurb: "Find your way around the dictionary", files: ["index.htm", "introduction.htm", "dictmenu.htm", "menus.htm", "search.htm", "dictionarysearch.htm", "multimediasearch.htm", "subjectsearch.htm", "settings.htm", "copy.htm", "printing.htm", "changingmode.htm", "switchingbetweenmodes.htm", "popupmenu.htm"] },
-  { key: "skills", title: "Dictionary skills", blurb: "Pronunciation, word sets, frequency and more", files: ["pronunciation.htm", "pronunciationsearch.htm", "syllables.htm", "wordsets.htm", "wordfrequency.htm", "wordorigins.htm", "wordoriginsearch.htm", "verbforms.htm", "examples.htm", "phrasebank.htm", "pictures.htm"] },
-  { key: "exams", title: "Exam guides", blurb: "How each exam works, from the Exams Coach", files: ["examcoach.htm", "fce.htm", "cae.htm", "ielts.htm", "toeic.htm", "toefl.htm", "exercises.htm", "practice_test.htm", "hints_feedback.htm"] },
-  { key: "writing", title: "Writing with the Activator", blurb: "Choosing a precise word when writing", files: ["activatormenu.htm", "howtheactivatorisorganized.htm", "puttingyourideasintowords.htm", "choosingtherightwordwhenwriting.htm", "choosetherightword.htm", "activateyourlanguage.htm", "writinghandbook.htm", "grammarhandbook.htm", "commonerrors.htm"] },
+  { key: "start", title: "Start here", blurb: "Find your way around the dictionary", files: ["index.htm", "introduction.htm", "dictmenu.htm", "menus.htm", "search.htm", "dictionarysearch.htm", "settings.htm", "copy.htm"] },
+  { key: "skills", title: "Dictionary skills", blurb: "Pronunciation, word sets, frequency and more", files: ["pronunciation.htm", "wordsets.htm", "wordfrequency.htm", "verbforms.htm", "examples.htm", "phrasebank.htm", "pictures.htm"] },
+  { key: "exams", title: "Exam guides", blurb: "How each exam works, from the Exams Coach", files: ["examcoach.htm", "fce.htm", "cae.htm", "ielts.htm", "toeic.htm", "toefl.htm"] },
+  { key: "writing", title: "Choosing a precise word", blurb: "Similar words, phrases and typical slips on every entry", files: ["activatormenu.htm", "commonerrors.htm"] },
   { key: "about", title: "About this dictionary", blurb: "Credits, copyright and support", files: ["aboutmenu.htm", "copyright.htm", "acknowledgements.htm", "technicalsupport.htm"] },
 ];
 // Authored reading order across all journeys: catalogue lists sort by this
@@ -1316,7 +1307,7 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
   const step = (d: number) => {
     const i = Math.min(Math.max(nav.i + d, 0), nav.hist.length - 1);
     if (i === nav.i || nav.hist.length === 0) return;
-    playBlipIfNotPressed(SFX.guideStep, 0.08);
+    playBlip(SFX.guideStep, 0.08);
     const p = pages.find((pg) => pg.file === nav.hist[i]);
     if (p) {
       const j = GUIDE_JOURNEYS.find((gj) => inFiles(gj.files, p.file));
@@ -1464,11 +1455,11 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
     <List.Root
       items={items}
       selectedItem={selected}
-      onSelectedItemChange={(item) => { openPage(item as unknown as HelpPage); playBlipIfNotPressed(SFX.guide, 0.09); }}
+      onSelectedItemChange={(item) => { openPage(item as unknown as HelpPage); playBlip(SFX.guide, 0.09); }}
       getItemKey={(t: HelpPage) => t.file}
     >
       {items.map((t) => (
-        <List.Item key={t.file} item={t as any} data-sfx="guide">
+        <List.Item key={t.file} item={t as any}>
           <List.ItemContent>
             <List.ItemTitle>
               {/* Native tooltip: long CD titles ("...Writing Assis|tant")
@@ -1545,11 +1536,11 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
               <SearchInput value={query} onChange={setQuery} ghost="" onClearGhost={() => {}} loading={false} inputRef={guideInputRef} placeholder="Search guide pages" />
               </div>
               <div className="flex flex-wrap gap-1.5 mt-3">
-              <button key="all" data-sfx="journey" data-sfx-dur="0.08" onClick={() => { setJourney("all"); playBlipIfNotPressed(SFX.journey, 0.08); }} className="cursor-pointer">
+              <button key="all" onClick={() => { setJourney("all"); playBlip(SFX.journey, 0.08); }} className="cursor-pointer">
                 <Badge color="secondary" className={journey === "all" ? "font-semibold ring-1 ring-[var(--theme-accent)]" : undefined}>All</Badge>
               </button>
               {GUIDE_JOURNEYS.map((j) => (
-                <button key={j.key} data-sfx="journey" data-sfx-dur="0.08" onClick={() => { setJourney(j.key); playBlipIfNotPressed(SFX.journey, 0.08); }} className="cursor-pointer" title={j.blurb}>
+                <button key={j.key} onClick={() => { setJourney(j.key); playBlip(SFX.journey, 0.08); }} className="cursor-pointer" title={j.blurb}>
                   <Badge color="secondary" className={journey === j.key ? "font-semibold ring-1 ring-[var(--theme-accent)]" : undefined}>{j.title}</Badge>
                 </button>
               ))}
@@ -1602,7 +1593,6 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
                 (no disabled/focus/hover disc can ever paint here). step()
                 itself guards the ends; unusable ones stay invisible. */}
             <button
-              data-sfx="guideStep" data-sfx-dur="0.08"
               onClick={(e) => { step(-1); e.currentTarget.blur(); }}
               aria-label="Back"
               title="Back"
@@ -1611,7 +1601,6 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
               <ChevronLeftIcon className="size-4" />
             </button>
             <button
-              data-sfx="guideStep" data-sfx-dur="0.08"
               onClick={(e) => { step(1); e.currentTarget.blur(); }}
               aria-label="Forward"
               title="Forward"
@@ -1654,14 +1643,14 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
                   if (next) {
                     setPendingFrag(frag || null);
                     openPage(next);
-                    playBlipIfNotPressed(SFX.guide, 0.09);
+                    playBlip(SFX.guide, 0.09);
                   } else {
                     toast.error("That help page wasn't included on the disc");
                   }
                 } else if (href.startsWith("coach:")) {
                   e.preventDefault();
                   onOpenCoach(href.slice(6).trim() || null);
-                  playBlipIfNotPressed(SFX.coach, 0.09);
+                  playBlip(SFX.coach, 0.09);
                 } else if (href.startsWith("#")) {
                   e.preventDefault();
                   const id = href.slice(1);
@@ -1883,7 +1872,7 @@ export function HomeView() {
   // related-words and mistake-note cross-references.
   const lookupWord = (hwd: string) => {
     userPicked.current = true;
-    playBlipIfNotPressed(SFX.lookup);
+    playBlip(SFX.lookup);
     const q = hwd.toLowerCase();
     setQuery(q);
     setActiveTab("dictionary");
@@ -1904,7 +1893,7 @@ export function HomeView() {
       {/* Hidden drag region for window */}
       <div className="h-0 drag-region" />
 
-      <DictionaryTabs activeTab={activeTab} onChange={(v) => { setActiveTab(v); playBlipIfNotPressed(SFX.tab, 0.08); }} onAbout={() => { setShowAbout(true); playBlipIfNotPressed(SFX.about, 0.1); }} motionIsOn={motionIsOn} onToggleMotion={() => { setMotionIsOn((m) => !m); playBlipIfNotPressed(SFX.motion, 0.09); }} />
+      <DictionaryTabs activeTab={activeTab} onChange={(v) => { setActiveTab(v); playBlip(SFX.tab, 0.08); }} onAbout={() => { setShowAbout(true); playBlip(SFX.about, 0.1); }} motionIsOn={motionIsOn} onToggleMotion={() => { setMotionIsOn((m) => !m); playBlip(SFX.motion, 0.09); }} />
 
       {/* NOTE: title+description must stay SET (hidden, not removed). Glaze
           Dialog only takes the modal/portal path when trigger, title,
@@ -1963,7 +1952,7 @@ export function HomeView() {
             {resetArmed ? "Tap again to erase streak, XP and level" : "Reset learning progress"}
           </button>
           <Text variant="small" color="tertiary">
-            Your key to exam success · Fully offline
+            Your key to exam success
           </Text>
         </div>
       </Dialog>
@@ -2014,10 +2003,9 @@ export function HomeView() {
                           {history.slice(0, 5).map((h) => (
                             <button
                               key={`h-${h}`}
-                              data-sfx="lookup"
                               onClick={() => {
                                 userPicked.current = true;
-                                playBlipIfNotPressed(SFX.lookup);
+                                playBlip(SFX.lookup);
                                 setQuery(h);
                               }}
                               className="cursor-pointer"
@@ -2039,10 +2027,9 @@ export function HomeView() {
                           {favorites.map((f) => (
                             <button
                               key={`f-${f}`}
-                              data-sfx="lookup"
                               onClick={() => {
                                 userPicked.current = true;
-                                playBlipIfNotPressed(SFX.lookup);
+                                playBlip(SFX.lookup);
                                 setQuery(f);
                               }}
                               className="cursor-pointer"
@@ -2077,13 +2064,13 @@ export function HomeView() {
                 selectedItem={selected}
                 onSelectedItemChange={(item) => {
                   userPicked.current = true;
-                  playBlipIfNotPressed(SFX.lookup);
+                  playBlip(SFX.lookup);
                   setSelected(item as unknown as SearchResult);
                 }}
                 getItemKey={(r: SearchResult) => String(r.id)}
               >
                 {results.map((r) => (
-                  <List.Item key={r.id} item={r as any} data-sfx="lookup">
+                  <List.Item key={r.id} item={r as any}>
                     <List.ItemContent>
                       <List.ItemTitle className="flex items-center gap-1.5">
                         <span className="truncate">{r.hwd}</span>
@@ -2153,7 +2140,7 @@ export function HomeView() {
                       hwd: selectedEntry.hwd,
                     });
                     setFavorites(r.list ?? []);
-                    playBlipIfNotPressed(SFX.save, 0.09);
+                    playBlip(SFX.save, 0.09);
                     toast.success(r.saved ? `Saved “${selectedEntry.hwd}”` : `Removed “${selectedEntry.hwd}” from saved`);
                   } catch (e) {
                     toast.error(String(e));
@@ -2186,7 +2173,7 @@ export function HomeView() {
       <div className="app-footer h-7 shrink-0 border-t border-separator bg-panel flex items-center px-3 text-small text-tertiary gap-2">
         <GraduationCapIcon className="size-3.5" />
         <Text variant="small" color="tertiary" truncate>
-          For Upper Intermediate – Advanced Learners · 212,000 words, phrases and meanings · Exams Coach
+          For Upper Intermediate – Advanced Learners · 212,000 words, phrases and meanings
         </Text>
         <div className="flex-1" />
         <Text variant="small" color="quaternary">Fully offline • Pearson 2006</Text>

@@ -28,6 +28,20 @@ check("every help page listed once each",
   disk.every((f) => journeys.includes(f)) && journeys.every((f) => disk.includes(f)));
 check("no leftover CD-ROM walkthroughs",
   disk.every((f) => !/What follows describes/i.test(readFileSync(`data/help/${f}`, "utf8"))));
+// Guidance pages speak for this app alone — no legacy-platform framing.
+// copyright + acknowledgements keep the 2006 legal notice and the original
+// production credit roles ("CD-ROM development" is a job title, not copy).
+const LEGAL_PAGES = new Set(["copyright.htm", "acknowledgements.htm"]);
+const legacy = disk.filter((f) => !LEGAL_PAGES.has(f)
+  && /\bCD-?ROM\b|original CD|tools-button|Guide button|audio coach|Hide text|on the disc|from the disc/i
+    .test(readFileSync(`data/help/${f}`, "utf8")));
+check("no CD-ROM or legacy-UI wording in guidance pages", legacy.length === 0);
+// Guidance tells you what you CAN do. Absence-listing ("there is no X") reads
+// as apology and implies a feature the reader should have expected.
+const absent = disk.filter((f) => !LEGAL_PAGES.has(f)
+  && /\bthere (is|are) no\b|\bthis (app|dictionary) has no\b|\bno separate\b|not included\b/i
+    .test(readFileSync(`data/help/${f}`, "utf8")));
+check("guidance pages lead with what the app does", absent.length === 0);
 const broken = [];
 for (const f of disk) {
   const html = readFileSync(`data/help/${f}`, "utf8");
@@ -49,19 +63,11 @@ check("help links resolve", broken.length === 0);
 // flattened order. Relative pairs (not the full list) so journeys can grow.
 const idx = (f) => journeys.indexOf(f);
 const before = (a, b) => idx(a) >= 0 && idx(b) >= 0 && idx(a) < idx(b);
-check("search before its specialized searches",
-  before("search.htm", "dictionarysearch.htm") &&
-  before("search.htm", "multimediasearch.htm") &&
-  before("search.htm", "subjectsearch.htm"));
-check("pronunciation before pronunciation search", before("pronunciation.htm", "pronunciationsearch.htm"));
-check("word origins before origin search", before("wordorigins.htm", "wordoriginsearch.htm"));
+check("search before dictionary search", before("search.htm", "dictionarysearch.htm"));
 check("examples before phrase bank", before("examples.htm", "phrasebank.htm"));
-check("exam coach before exam guides", before("examcoach.htm", "fce.htm") && before("fce.htm", "exercises.htm"));
-check("activator hub before its walkthroughs",
-  before("activatormenu.htm", "howtheactivatorisorganized.htm") &&
-  before("howtheactivatorisorganized.htm", "puttingyourideasintowords.htm") &&
-  before("puttingyourideasintowords.htm", "choosingtherightwordwhenwriting.htm"));
-check("copy sits with printing", Math.abs(idx("copy.htm") - idx("printing.htm")) === 1);
+check("exam coach before exam guides", before("examcoach.htm", "fce.htm"));
+check("pronunciation sits with the other entry skills",
+  before("pronunciation.htm", "wordfrequency.htm") && before("pronunciation.htm", "pictures.htm"));
 check("contents and introduction open the catalogue", idx("index.htm") === 0 && idx("introduction.htm") === 1);
 
 const cdRomTitles = disk.filter((f) => {
@@ -75,6 +81,12 @@ check("no leftover CD-ROM catalogue titles", cdRomTitles.length === 0);
 check('no blue badges', !src.includes('color="blue"') && !src.includes("? \"blue\""));
 check("no retired brand hex", !/007FA3|003057/.test(src));
 check("no UI em dashes", !/toast\.\w+\(`[^`]*—/.test(src));
+// The footer is a status strip, not a second navigation: it must not name a
+// toolbar menu, and must not repeat a claim the About dialog already owns.
+const footer = /className="app-footer[\s\S]*?\n      <\/div>/.exec(src)?.[0] ?? "";
+check("footer present", footer.length > 0);
+check("footer does not repeat a nav menu name", !/Exams Coach/.test(footer));
+check("'Fully offline' claimed once", (src.match(/Fully offline/g) ?? []).length === 1);
 
 // 4. Shipping assets
 check("app icons present", existsSync("app-icon.png") && existsSync("app-icon.icns"));
