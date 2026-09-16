@@ -200,7 +200,7 @@ function motionPlays(full: boolean): boolean {
   return full || !prefersReducedMotion();
 }
 
-const DETAIL_IN: { keyframes: Keyframe[]; options: KeyframeAnimationOptions } = {
+const DETAIL_IN = {
   keyframes: [{ opacity: 0, transform: "translateY(4px)" }, { opacity: 1, transform: "none" }],
   options: { duration: 240, easing: "ease-out", fill: "both" },
 };
