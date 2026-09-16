@@ -21,7 +21,7 @@ Unofficial native macOS port of the classic **Longman Exams Dictionary CD-ROM (2
 
 - **Dictionary** — 42,380 headwords with pronunciations, verb forms, collocations and corpus examples; Top 1000 exam-priority markers plus Longman Communication 3000 frequency bands (S1–S3 spoken, W1–W3 written); debounced instant search with A–Z paging
 - **Exams Coach** — 762 exam topics with related-word glosses, exam-guide chips and study streaks with XP
-- **Guide** — the study handbook as five readable journeys (dictionary skills, exam formats, academic writing)
+- **Guide** — the study handbook as five readable journeys (start here, dictionary skills, exam guides, choosing a precise word, about)
 - **Common mistakes** — wrong vs right minimal pairs with plain explanations and tappable cross-reference jumps
 - **Fully offline** — SQLite corpus, pronunciation audio and illustrations all on-device; light and dark mode
 

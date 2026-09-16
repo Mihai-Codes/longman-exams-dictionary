@@ -8,6 +8,17 @@ build/
 # Agent context (auto-generated, not worth versioning)
 .glaze_memory/
 
+# Glaze-managed agent skill symlinks: these point into this machine's Glaze
+# app support folder, so they are dead links for anyone who clones the repo.
+# No trailing slash — .agents/skills is a symlink, which git treats as a file.
+.claude/skills/
+.agents/skills
+
+# Editor / assistant backups and scratch
+*.grokbak
+*.bak
+harness.html
+
 # Large derived corpus (Git LFS, see .gitattributes)
 # (led_full.sqlite tracked via LFS; everything else in data/ is direct)
 
