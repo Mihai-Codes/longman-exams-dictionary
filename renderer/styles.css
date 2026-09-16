@@ -312,6 +312,15 @@ body {
 .led-guide-html p.navline {
   margin: 0 0 0.4rem;
 }
+/* Prose resuming after a group — a catalogue run, a list, a table, a quote —
+   has no top margin of its own, so it sat only as far below the group as the
+   group's small bottom margin (0.4rem after index lines, 0.6rem after lists)
+   and read as crammed onto the text above. Restore the full prose gap there.
+   Subheads are excluded: they already own a larger top margin. */
+.led-guide-html :is(ul, ol, table, blockquote) + p,
+.led-guide-html p.navline + p:not(.navline):not(.subhead) {
+  margin-top: 1rem;
+}
 .led-guide-html li {
   text-align: start;
   text-wrap: pretty;
