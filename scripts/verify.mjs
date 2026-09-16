@@ -83,7 +83,8 @@ check("no retired brand hex", !/007FA3|003057/.test(src));
 check("no UI em dashes", !/toast\.\w+\(`[^`]*—/.test(src));
 // The footer is a status strip, not a second navigation: it must not name a
 // toolbar menu, and must not repeat a claim the About dialog already owns.
-const footer = /className="app-footer[\s\S]*?\n      <\/div>/.exec(src)?.[0] ?? "";
+// Its only child div is self-closing, so the first </div> ends the footer.
+const footer = /className="app-footer[\s\S]*?<\/div>/.exec(src)?.[0] ?? "";
 check("footer present", footer.length > 0);
 check("footer does not repeat a nav menu name", !/Exams Coach/.test(footer));
 check("'Fully offline' claimed once", (src.match(/Fully offline/g) ?? []).length === 1);
