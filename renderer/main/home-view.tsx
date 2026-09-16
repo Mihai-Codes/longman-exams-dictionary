@@ -223,6 +223,8 @@ const SFX = {
   empty: 329.63, // low thud: action had nothing to show
   journey: 587.33, // Guide journey section changed
   online: 1318.5, // current entry opened on ldoceonline.com
+  reset: 261.63, // About: progress reset ARMED (confirmation asked)
+  erased: 196, // About: progress reset DONE (lower = finality)
 };
 
 // One loudness for every tone, so the pool key and the generated WAV agree.
@@ -317,6 +319,7 @@ const SFX_TONES: [keyof typeof SFX, number][] = [
   ["lookup", 0.1], ["coach", 0.09], ["guide", 0.09], ["guideStep", 0.08],
   ["tab", 0.08], ["motion", 0.09], ["about", 0.1], ["save", 0.09],
   ["image", 0.09], ["empty", 0.12], ["journey", 0.08], ["online", 0.09],
+  ["reset", 0.12], ["erased", 0.22],
 ];
 
 let audioReady = false;
@@ -1998,10 +2001,14 @@ export function HomeView() {
           <button
             onClick={() => {
               if (!resetArmed) {
+                // Arming is a question, so it gets the higher, unresolved tone.
+                playBlip(SFX.reset, 0.12);
                 setResetArmed(true);
                 setTimeout(() => setResetArmed(false), 3000);
                 return;
               }
+              // The destructive commit answers it with a lower, longer tone.
+              playBlip(SFX.erased, 0.22);
               setResetArmed(false);
               resetProgress();
               setShowAbout(false);

@@ -105,6 +105,26 @@ check("guide paragraphs space by margin, not first-line indent",
 // rule in styles.css is the single source of truth for paragraph rhythm.
 check("guide paragraph rhythm lives only in styles.css",
   !/\[_p\]:(?:text-justify|text-align|text-indent)/.test(src));
+// UI tones are identified by ear, so each needs its own pitch, and each must be
+// listed in SFX_TONES or its surface pays a decode on the first press.
+const toneMap = new Map(
+  [...src.matchAll(/^ {2}(\w+): ([\d.]+),? \/\//gm)].map(([, n, f]) => [n, parseFloat(f)])
+);
+check("every UI tone has a distinct pitch",
+  new Set(toneMap.values()).size === toneMap.size);
+// A tone the click path references but the map never parsed would otherwise
+// throw here and crash the whole run with an opaque TypeError.
+const named = [...src.matchAll(/playBlip\(SFX\.(\w+)(?:, ([\d.]+))?\)/g)];
+const unknown = [...new Set(named.map(([, n]) => n).filter((n) => !toneMap.has(n)))];
+check("every referenced tone is declared in SFX", unknown.length === 0);
+const preloaded = new Set([.../const SFX_TONES[\s\S]*?\];/.exec(src)[0]
+  .matchAll(/"(\w+)", ([\d.]+)/g)]
+  .filter(([, n]) => toneMap.has(n))
+  .map(([, n, d]) => `${toneMap.get(n)}/${d}/0.04`));
+const unpreset = named
+  .map(([, n, d]) => `${toneMap.get(n)}/${d || "0.1"}/0.04`)
+  .filter((k) => !preloaded.has(k));
+check("every tone a click path plays is pre-decoded", unpreset.length === 0);
 
 // 4. Shipping assets
 check("app icons present", existsSync("app-icon.png") && existsSync("app-icon.icns"));
