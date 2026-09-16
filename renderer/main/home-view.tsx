@@ -202,7 +202,7 @@ function motionPlays(full: boolean): boolean {
 
 const DETAIL_IN = {
   keyframes: [{ opacity: 0, transform: "translateY(4px)" }, { opacity: 1, transform: "none" }],
-  options: { duration: 240, easing: "ease-out", fill: "both" },
+  options: { duration: 240, easing: "ease-out", fill: "both" as const },
 };
 
 // One HTML Audio per surface. Web Audio in WKWebView can sit `running` with
