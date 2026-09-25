@@ -39,6 +39,8 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ZapIcon,
+  NewspaperIcon,
+  BookPlusIcon,
 } from "lucide-react";
 
 type SearchResult = { id: number; hwd: string; pron: string; pos: string; def: string };
@@ -606,7 +608,7 @@ function BulletDot({ size }: { size: "large" | "small" }) {
   );
 }
 
-// One bullet card shared by Examples and From-books-and-newspapers.
+// One bullet card shared by Examples and corpus entries.
 // Bullet always inline with its first line (never centered, never stacked
 // above it). Every row gets a bullet (no first-row exception).
 function BulletCard({ children }: { children: ReactNode }) {
@@ -617,6 +619,23 @@ function BulletCard({ children }: { children: ReactNode }) {
         {children}
       </Text>
     </div>
+  );
+}
+
+function CorpusSource({ source }: { source: string }) {
+  const normalized = source.trim().toLowerCase();
+  const attribution = normalized === "books"
+    ? { label: "Books & newspapers", Icon: NewspaperIcon }
+    : normalized === "extra"
+      ? { label: "Additional examples", Icon: BookPlusIcon }
+      : { label: source.trim(), Icon: FileTextIcon };
+  if (!attribution.label) return null;
+  const { Icon } = attribution;
+  return (
+    <span className="inline-flex items-center gap-1 text-small text-tertiary not-italic">
+      <Icon className="size-3.5" aria-hidden="true" />
+      {attribution.label}
+    </span>
   );
 }
 
@@ -909,14 +928,16 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
       {corpus.length > 0 && (
         <div className="rounded-xl bg-panel border border-separator p-4">
           <Text variant="small-strong" color="secondary" className="uppercase tracking-widest flex items-center gap-1.5 mb-3">
-            <FileTextIcon className="size-3.5" /> From books and newspapers
+            <FileTextIcon className="size-3.5" /> Corpus examples
           </Text>
           <div className="space-y-2.5">
             {corpus.slice(0, 6).map((c, i) => (
-              <BulletCard key={i}>
-                {c.sentence}
-                {c.source ? `, ${c.source}` : ""}
-              </BulletCard>
+              <div key={`${c.source}-${i}`} className="rounded-lg bg-well/60 border border-separator/50 px-3 py-2.5 space-y-2">
+                <Text variant="large" className="italic leading-relaxed block">
+                  {c.sentence}
+                </Text>
+                <CorpusSource source={c.source} />
+              </div>
             ))}
           </div>
         </div>
