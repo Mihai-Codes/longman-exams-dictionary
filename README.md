@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/macOS-Tahoe%2B-000000?logo=apple&logoColor=white" alt="macOS">
+  <img src="https://img.shields.io/badge/macOS-27%20Golden%20Gate-000000?logo=apple&logoColor=white" alt="macOS">
   <img src="https://img.shields.io/badge/TypeScript-5.5-3178C6?logo=typescript&logoColor=white" alt="TypeScript">
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" alt="React">
   <img src="https://img.shields.io/badge/SQLite-42k%20entries-003B57?logo=sqlite&logoColor=white" alt="SQLite">
