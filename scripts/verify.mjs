@@ -149,17 +149,28 @@ check("every UI tone has a distinct pitch",
   new Set(toneMap.values()).size === toneMap.size);
 // A tone the click path references but the map never parsed would otherwise
 // throw here and crash the whole run with an opaque TypeError.
-const named = [...src.matchAll(/playBlip\(SFX\.(\w+)(?:, ([\d.]+))?\)/g)];
+const named = [...src.matchAll(/playBlip\(SFX\.(\w+)(?:, ([\d.]+)(?:, ([\d.]+))?)?\)/g)];
 const unknown = [...new Set(named.map(([, n]) => n).filter((n) => !toneMap.has(n)))];
 check("every referenced tone is declared in SFX", unknown.length === 0);
-const preloaded = new Set([.../const SFX_TONES[\s\S]*?\];/.exec(src)[0]
-  .matchAll(/"(\w+)", ([\d.]+)/g)]
-  .filter(([, n]) => toneMap.has(n))
-  .map(([, n, d]) => `${toneMap.get(n)}/${d}/0.04`));
+const toneRows = [.../const SFX_TONES[\s\S]*?\];/.exec(src)[0]
+  .matchAll(/\["(\w+)", ([\d.]+), ([\d.]+|SFX_VOL)\]/g)];
+const normalizedVolume = (volume) => volume === "SFX_VOL" ? "0.04" : volume;
+const preloaded = new Set(toneRows.map(([, n, d, v]) => `${toneMap.get(n)}/${d}/${normalizedVolume(v)}`));
+const durationByTone = new Map(toneRows.map(([, n, d]) => [n, d]));
+const volumeByTone = new Map(toneRows.map(([, n, , v]) => [n, normalizedVolume(v)]));
 const unpreset = named
-  .map(([, n, d]) => `${toneMap.get(n)}/${d || "0.1"}/0.04`)
+  .map(([, n, d, v]) => `${toneMap.get(n)}/${d || durationByTone.get(n) || "0.1"}/${v || volumeByTone.get(n) || "0.04"}`)
   .filter((k) => !preloaded.has(k));
 check("every tone a click path plays is pre-decoded", unpreset.length === 0);
+const rewardNames = ["xp", "streak", "achievement"];
+check("reward cues are included in the preloaded sound pool",
+  rewardNames.every((name) => toneMap.has(name) && preloaded.has(`${toneMap.get(name)}/${durationByTone.get(name)}/${volumeByTone.get(name)}`)));
+check("reward cues are fired synchronously on first-time row selection",
+  /const cue = lookup\(picked\.hwd\);[\s\S]{0,180}if \(cue\) playRewardCue\(cue\)/.test(src));
+check("same selected row can still earn its first-lookup reward",
+  /if \(selected\?\.id === picked\.id\)[\s\S]{0,180}const cue = lookup\(picked\.hwd\)/.test(src));
+check("delayed entry hydration does not try to play reward audio",
+  !/recordPick[\s\S]{0,180}playRewardCue/.test(src));
 
 // 4. Shipping assets
 check("app icons present", existsSync("app-icon.png") && existsSync("app-icon.icns"));

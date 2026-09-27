@@ -4,6 +4,7 @@ import { motionModeFromPreference, shouldPlayMotion, type MotionMode } from "./m
 import { useCompactPane } from "./compact-layout";
 import { createRequestGuard } from "./request-guard";
 import { createSelectionIntent } from "./selection-intent";
+import { awardLookup } from "./gamification";
 import {
   Button,
   Input,
@@ -73,8 +74,6 @@ type Stats = {
 };
 
 type Gamification = { count: number; lastDate: string; xp: number; level: number; seen: string[] };
-
-const SEEN_CAP = 5000;
 
 // Single typed bridge to the backend — one cast lives here instead of at
 // every call site.
@@ -147,46 +146,32 @@ function loadGamification(): Gamification {
 function useGamification() {
   const [streak, setStreak] = useState<Gamification>(loadGamification);
   const [celebrate, setCelebrate] = useState(false);
+  const streakRef = useRef(streak);
+  streakRef.current = streak;
+
+  const previewLookupCue = (hwd: string) => awardLookup(streakRef.current, hwd)?.cue ?? null;
 
   const lookup = (hwd: string) => {
-    const key = hwd.trim().toLowerCase();
-    if (!key) return;
-    setStreak((prev) => {
-      if (prev.seen.includes(key)) return prev;
-      const today = new Date().toDateString();
-      const seen = [...prev.seen, key].slice(-SEEN_CAP);
-      const bonus = seen.length === 10 || seen.length === 50 || seen.length === 100 ? 10 : 0;
-      const xp = prev.xp + 1 + bonus;
-      const level = Math.floor(xp / 50) + 1;
-      // A streak is consecutive days: a gap breaks it back to day 1.
-      // (A bad stored date also resets — never grows from garbage.)
-      const gap = Math.round((new Date(today).getTime() - new Date(prev.lastDate).getTime()) / 86400000);
-      const next = {
-        count: prev.lastDate !== today ? (gap === 1 ? prev.count + 1 : 1) : prev.count,
-        lastDate: today,
-        xp,
-        level,
-        seen,
-      };
-      try {
-        localStorage.setItem("led-streak-v2", JSON.stringify(next));
-      } catch {
-        /* private mode — streak just won't persist */
-      }
-      if (bonus > 0) {
-        setCelebrate(true);
-        setTimeout(() => setCelebrate(false), 1200);
-        toast.success(`Milestone! ${seen.length} words mastered. +10 XP bonus`);
-      } else if (level > prev.level) {
-        setCelebrate(true);
-        setTimeout(() => setCelebrate(false), 1200);
-        toast.success(`Level ${level} reached!`);
-      } else if (prev.lastDate !== today) {
-        setCelebrate(true);
-        setTimeout(() => setCelebrate(false), 1200);
-      }
-      return next;
-    });
+    const award = awardLookup(streakRef.current, hwd);
+    if (!award) return null;
+    streakRef.current = award.progress;
+    setStreak(award.progress);
+    try {
+      localStorage.setItem("led-streak-v2", JSON.stringify(award.progress));
+    } catch {
+      /* private mode — streak just won't persist */
+    }
+    if (award.cue === "achievement") {
+      setCelebrate(true);
+      setTimeout(() => setCelebrate(false), 1200);
+      toast.success(award.bonus > 0
+        ? `Milestone! ${award.progress.seen.length} words mastered. +10 XP bonus`
+        : `Level ${award.progress.level} reached!`);
+    } else if (award.cue === "streak") {
+      setCelebrate(true);
+      setTimeout(() => setCelebrate(false), 1200);
+    }
+    return award.cue;
   };
 
   // Fresh start: clears streak, XP, level and seen words. Two-tap guarded
@@ -197,10 +182,12 @@ function useGamification() {
     } catch {
       /* nothing stored */
     }
-    setStreak(freshGamification());
+    const fresh = freshGamification();
+    streakRef.current = fresh;
+    setStreak(fresh);
   };
 
-  return { streak, lookup, celebrate, reset };
+  return { streak, lookup, previewLookupCue, celebrate, reset };
 }
 
 function prefersReducedMotion(): boolean {
@@ -230,10 +217,13 @@ const SFX = {
   motion: 740, // Motion toggle flipped
   about: 987.77, // About opened
   save: 1046.5, // word saved / unsaved
-  image: 783.99, // illustration opened
+  image: 698.46, // illustration opened
   empty: 329.63, // low thud: action had nothing to show
   journey: 587.33, // Guide journey section changed
-  online: 1318.5, // current entry opened on ldoceonline.com
+  online: 1244.51, // current entry opened on ldoceonline.com
+  xp: 932.33, // first-time word lookup
+  streak: 830.61, // first lookup of a new day
+  achievement: 1318.5, // milestone or level reached
   reset: 261.63, // About: progress reset ARMED (confirmation asked)
   erased: 196, // About: progress reset DONE (lower = finality)
 };
@@ -326,11 +316,12 @@ function armKeepAlive(): void {
 // Every tone the UI plays, so the pool is built once instead of paying a
 // decode on a surface's first click. Durations must mirror the playBlip call
 // sites; a call site that drifts still works, it just decodes lazily.
-const SFX_TONES: [keyof typeof SFX, number][] = [
-  ["lookup", 0.1], ["coach", 0.09], ["guide", 0.09], ["guideStep", 0.08],
-  ["tab", 0.08], ["motion", 0.09], ["about", 0.1], ["save", 0.09],
-  ["image", 0.09], ["empty", 0.12], ["journey", 0.08], ["online", 0.09],
-  ["reset", 0.12], ["erased", 0.22],
+const SFX_TONES: [keyof typeof SFX, number, number][] = [
+  ["lookup", 0.1, SFX_VOL], ["coach", 0.09, SFX_VOL], ["guide", 0.09, SFX_VOL], ["guideStep", 0.08, SFX_VOL],
+  ["tab", 0.08, SFX_VOL], ["motion", 0.09, SFX_VOL], ["about", 0.1, SFX_VOL], ["save", 0.09, SFX_VOL],
+  ["image", 0.09, SFX_VOL], ["empty", 0.12, SFX_VOL], ["journey", 0.08, SFX_VOL], ["online", 0.09, SFX_VOL],
+  ["xp", 0.12, 0.06], ["streak", 0.16, 0.06], ["achievement", 0.22, 0.075],
+  ["reset", 0.12, SFX_VOL], ["erased", 0.22, SFX_VOL],
 ];
 
 let audioReady = false;
@@ -342,9 +333,14 @@ function initAudio(): void {
   keepAliveEl.src = wavBlip(1, 0.5, 0.0002);
   keepAliveEl.loop = true;
   keepAliveEl.preload = "auto";
-  for (const [name, dur] of SFX_TONES) {
-    ensureSfx(`${SFX[name]}/${dur}/${SFX_VOL}`, SFX[name], dur, SFX_VOL);
+  for (const [name, dur, vol] of SFX_TONES) {
+    ensureSfx(`${SFX[name]}/${dur}/${vol}`, SFX[name], dur, vol);
   }
+}
+
+function playRewardCue(cue: "xp" | "streak" | "achievement"): void {
+  const [, duration, volume] = SFX_TONES.find(([name]) => name === cue)!;
+  playBlip(SFX[cue], duration, volume);
 }
 
 function playBlip(freq = 880, dur = 0.1, vol = SFX_VOL) {
@@ -1856,7 +1852,7 @@ export function HomeView() {
     if (!tabChanged || !shouldPlayMotion(motionMode, reduceMotion)) return;
     tabAnimRef.current = tabBodyRef.current?.animate(DETAIL_IN.keyframes, DETAIL_IN.options) ?? null;
   }, [activeTab, motionMode, reduceMotion]);
-  const { streak, lookup, celebrate: showConfetti, reset: resetProgress } = useGamification();
+  const { streak, lookup, previewLookupCue, celebrate: showConfetti, reset: resetProgress } = useGamification();
   const [history, setHistory] = useState<string[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
   // Single source for entry extras: one parallel fetch per headword feeds
@@ -1898,12 +1894,12 @@ export function HomeView() {
     };
   }, [selectedEntry?.hwd]);
   // Selection intent is tied to one row ID so overlapping entry fetches
-  // cannot attribute XP/history to the wrong word.
+  // cannot attribute history to the wrong word.
   const [userPicked] = useState(createSelectionIntent<number>);
   const recordLookup = (hwd: string, publishHistory = (items: string[]) => setHistory(items ?? [])) => {
-    lookup(hwd);
     void invoke<string[]>("library:historyPush", { hwd }).then(publishHistory).catch(() => {});
   };
+
   const searchRef = useRef<HTMLInputElement | null>(null);
   // Latest query mirror + pending auto-select timer (search perf: typing
   // must not trigger getEntry + 5 study invokes per keystroke).
@@ -2010,7 +2006,9 @@ export function HomeView() {
     if (!q) return;
     wordLookupGuard.invalidate();
     userPicked.clear();
-    playBlip(SFX.lookup);
+    const predictedCue = previewLookupCue(q);
+    if (predictedCue) playRewardCue(predictedCue);
+    else playBlip(SFX.lookup);
     const isCurrent = wordLookupGuard.begin();
     setQuery(q);
     setActiveTab("dictionary");
@@ -2021,6 +2019,7 @@ export function HomeView() {
         const hit = r.find((x) => x.hwd.toLowerCase() === q) ?? r[0];
         if (hit) {
           setSelected(hit);
+          lookup(hit.hwd);
           recordLookup(hit.hwd);
           if (compactPane.compact) compactPane.showDetail();
         } else {
@@ -2212,11 +2211,16 @@ export function HomeView() {
                   if (selected?.id === picked.id) {
                     userPicked.clear();
                     recordLookup(picked.hwd);
+                    const cue = lookup(picked.hwd);
+                    if (cue) playRewardCue(cue);
+                    else playBlip(SFX.lookup);
                   } else {
+                    const cue = lookup(picked.hwd);
                     userPicked.arm(picked.id);
                     setSelected(picked);
+                    if (cue) playRewardCue(cue);
+                    else playBlip(SFX.lookup);
                   }
-                  playBlip(SFX.lookup);
                   if (compactPane.compact) compactPane.showDetail();
                 }}
                 getItemKey={(r: SearchResult) => String(r.id)}
