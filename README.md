@@ -19,9 +19,13 @@ Unofficial native macOS port of the classic **Longman Exams Dictionary CD-ROM (2
 
 ## Screenshots
 
-| Dictionary | Exams Coach | Guide | About |
-|---|---|---|---|
-| ![Dictionary entry](media/L-entry.png) | ![Exams Coach topic](media/L-coach-detail.png) | ![Guide contents](media/L-guide-article.png) | ![About dialog](media/L-about.png) |
+| Dictionary · gobsmacked | Exams Coach · ACCEPT |
+|---|---|
+| ![Dictionary entry for “gobsmacked,” showing its definition and corpus examples](media/L-entry.png) | ![Exams Coach topic “ACCEPT,” with related-word definitions and exam guides](media/L-coach-detail.png) |
+
+| Guide · Word frequency | About |
+|---|---|
+| ![Guide article explaining Longman frequency bands in an accessible table](media/L-guide-article.png) | ![About dialog showing dictionary and corpus statistics](media/L-about.png) |
 
 ## Features
 
@@ -47,7 +51,7 @@ Unofficial native macOS port of the classic **Longman Exams Dictionary CD-ROM (2
 ## Project structure
 
 ```
-sources/
+./
 ├── main/handlers/
 │   ├── dictionary.ts            # SQLite search, entries and Guide backend
 │   ├── input.ts                 # bounded IPC input normalization

@@ -171,6 +171,7 @@ const missing = [...readme.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)]
   .map((m) => m[1])
   .filter((p) => !/^https?:/i.test(p) && !existsSync(p));
 check("README image references resolve", missing.length === 0);
+check("README project tree uses repository root", readme.includes("## Project structure\n\n```\n./\n"));
 
 if (failures.length) { console.error(`\n${failures.length} failing invariant(s)`); process.exit(1); }
 console.log("\nall invariants hold");
