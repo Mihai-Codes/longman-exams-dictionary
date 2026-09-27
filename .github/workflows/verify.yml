@@ -8,9 +8,9 @@ on:
 # The Glaze CLI (build, lint, type-check) and the @glaze/* SDK it resolves
 # only exist inside the Glaze desktop app, so neither runs here. CI covers
 # what is portable: dependency install plus scripts/verify.mjs, which
-# asserts corpus integrity, guide coverage, branding red lines and
-# shipping assets with zero SDK dependency. Full builds and store
-# repackaging stay local (see README Setup).
+# asserts corpus integrity, guide coverage, branding red lines, shipping
+# assets, and dictionary input edge cases without the Glaze SDK. Full native
+# builds and store repackaging stay local (see README Setup).
 jobs:
   verify:
     runs-on: macos-latest
@@ -24,5 +24,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node scripts/verify.mjs
+      - run: ./node_modules/.bin/tsx --test scripts/*.test.ts
       - run: ./node_modules/.bin/tsc -p tsconfig.ci.json
       - run: node scripts/bundle-check.mjs

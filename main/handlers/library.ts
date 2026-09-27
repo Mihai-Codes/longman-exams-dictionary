@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { app, logger } from "@glaze/core/backend";
+import { cleanString } from "./input.js";
 
 // Personal library: recent lookups + saved words, persisted under the OS
 // app-data dir (never in the repo). JSON + atomic rename is plenty at this
@@ -34,8 +35,8 @@ function save(name: string, list: string[]): void {
 export const libraryHandlers = {
   history: async (): Promise<string[]> => load("led-history.json"),
 
-  historyPush: async (params: { hwd: string }): Promise<string[]> => {
-    const hwd = (params.hwd || "").trim();
+  historyPush: async (params: { hwd?: unknown } | null): Promise<string[]> => {
+    const hwd = cleanString(params?.hwd);
     if (!hwd) return load("led-history.json");
     const list = [hwd, ...load("led-history.json").filter((x) => x.toLowerCase() !== hwd.toLowerCase())].slice(
       0,
@@ -52,9 +53,10 @@ export const libraryHandlers = {
 
   favorites: async (): Promise<string[]> => load("led-favorites.json"),
 
-  favoritesToggle: async (params: { hwd: string }): Promise<{ saved: boolean; list: string[] }> => {
-    const hwd = (params.hwd || "").trim();
+  favoritesToggle: async (params: { hwd?: unknown } | null): Promise<{ saved: boolean; list: string[] }> => {
+    const hwd = cleanString(params?.hwd);
     const list = load("led-favorites.json");
+    if (!hwd) return { saved: false, list };
     const idx = list.findIndex((x) => x.toLowerCase() === hwd.toLowerCase());
     const saved = idx < 0;
     if (saved && hwd) list.unshift(hwd);

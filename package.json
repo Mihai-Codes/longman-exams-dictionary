@@ -1,7 +1,7 @@
 {
   "id": "c8f51u0u",
   "name": "longman-exams-dictionary",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "productName": "Longman Exams Dictionary: For Upper Intermediate – Advanced Learners",
   "description": "Exams dictionary, always offline.",
   "iconDescription": "A closed cream book seen directly from the front, massive and centered, with a single vertical golden bookmark, deep navy background, ultra-minimal, smooth rounded corners, soft highlight. No text, no letters. Simple, stunning, premium.",
@@ -60,11 +60,11 @@
   "packageManager": "npm@11.11.0+sha512-82gRxKrh/eY5UnNorkTFcdBQAGpgjWehkfGVqAGlJjejEtJZGGJUqjo3mbBTNbc5BTnPKGVtGPBZGhElujX5cw==",
   "glaze": {
     "capabilities": {},
-    "sdkVersion": "0.14.2.0",
+    "sdkVersion": "0.14.3.0",
     "createdAt": "2026-08-13T16:15:02.142Z",
     "lastMigration": "tray-retina-icons",
     "host": {
-      "minVersion": "0.14.2.0"
+      "minVersion": "0.14.3.0"
     },
     "updatedAt": 1789522396922,
     "appId": "longman-exams-dictionary-local-c8f51u0u",

@@ -200,12 +200,60 @@ body {
 .resize-handle {
   -webkit-mask-image: none !important;
   mask-image: none !important;
-  background-color: var(--delimiter) !important;
+  background-color: color-mix(in srgb, var(--blue) 24%, var(--bg-secondary)) !important;
+}
+
+.study-progress {
+  background-color: color-mix(in srgb, var(--blue) 25%, var(--bg-secondary));
+  border: 1px solid color-mix(in srgb, var(--blue) 45%, var(--bg-secondary));
+}
+.dark .study-progress {
+  background-color: color-mix(in srgb, var(--blue) 25%, var(--bg-secondary));
+  border-color: color-mix(in srgb, var(--blue) 45%, var(--bg-secondary));
 }
 
 /* App footer rule speaks the same delimiter voice. */
 .app-footer {
   border-top: 1px solid var(--delimiter);
+}
+
+/* At compact window widths, show one readable pane at a time instead of
+   squeezing SplitView's fixed-width list beside its detail column. */
+@media (max-width: 640px) {
+  .led-compact-split.led-compact-list .panel-sidebar-dividers > .panel-wrapper[data-panel-flex="true"],
+  .led-compact-split.led-compact-detail .panel-sidebar-dividers > .panel-wrapper:not([data-panel-flex="true"]),
+  .led-compact-split .panel-sidebar-dividers > .resize-handle {
+    display: none !important;
+  }
+
+  .led-compact-list .panel-sidebar-dividers > .panel-wrapper:not([data-panel-flex="true"]) {
+    flex: 1 1 0% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .led-compact-list .panel-sidebar-dividers > .panel-wrapper:not([data-panel-flex="true"]) > div {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .led-main-toolbar-row {
+    align-items: stretch !important;
+    flex-direction: column !important;
+    gap: 0.25rem !important;
+    height: auto !important;
+    min-height: 3.5rem;
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+  }
+
+  .led-main-toolbar-content {
+    width: 100%;
+  }
+
+  .led-main-toolbar-actions {
+    align-self: flex-end;
+  }
 }
 
 /* 8pt grid is baked into Tailwind spacing, but we enforce SF Pro tracking */
@@ -345,22 +393,83 @@ body {
   border-top: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
   margin: 1.25rem 0;
 }
+/* The frequency reference is a real data table; preserve its structure and
+   make its code/value columns easy to scan without old CHM grid weight. */
 .led-guide-html table {
-  font-size: var(--text-body);
-  border-collapse: collapse;
-  margin: 0.75rem 0;
+  width: 100%;
   max-width: 100%;
+  margin: 1rem 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--text-body);
+  line-height: var(--text-body-leading);
+  table-layout: auto;
+}
+.led-guide-html table caption {
+  margin-bottom: 0.5rem;
+  color: var(--fg);
+  font-weight: 600;
+  text-align: left;
 }
 .led-guide-html th,
 .led-guide-html td {
-  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
-  padding: 0.4rem 0.6rem;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  padding: 0.55rem 0.75rem;
   text-align: left;
   vertical-align: top;
+  color: var(--fg);
 }
-.led-guide-html th {
+.led-guide-html thead th {
+  color: var(--fg);
   font-weight: 600;
-  background-color: color-mix(in srgb, var(--fg) 4%, transparent);
+  background-color: color-mix(in srgb, var(--theme-accent) 8%, transparent);
+}
+.led-guide-html tbody th[scope="row"] {
+  width: 1%;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
+  color: var(--theme-accent);
+}
+.dark .led-guide-html tbody th[scope="row"] {
+  color: #9fb4d9;
+}
+.led-guide-html tbody tr:nth-child(even) {
+  background-color: color-mix(in srgb, var(--fg) 3%, transparent);
+}
+.led-guide-html tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.led-guide-html .guide-link-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.25rem 1rem;
+  margin: 0.5rem 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+.led-guide-html .guide-link-grid li {
+  min-width: 0;
+  margin: 0;
+  padding: 0.55rem 0.65rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  overflow-wrap: anywhere;
+}
+.led-guide-html .guide-link-grid a {
+  display: block;
+  border-radius: 4px;
+  text-decoration: none;
+}
+.led-guide-html .guide-link-grid a:hover {
+  text-decoration: underline;
+}
+.led-guide-html .guide-link-grid a:focus-visible {
+  outline: 2px solid var(--theme-accent);
+  outline-offset: 3px;
+}
+.led-guide-html .frequency-table td {
+  overflow-wrap: anywhere;
 }
 .led-guide-html blockquote {
   border-left: 3px solid var(--theme-accent);
@@ -402,5 +511,6 @@ body {
 }
 .led-dialog-in { animation: led-dialog-in 170ms ease-out; }
 @media (prefers-reduced-motion: reduce) {
-  body:not(.led-motion-full) .led-dialog-in { animation: none; }
+  body:not(.led-motion-full) .led-dialog-in,
+  body:not(.led-motion-full) .motion-pulse { animation: none; }
 }

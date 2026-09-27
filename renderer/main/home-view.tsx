@@ -1,4 +1,9 @@
 import { useEffect, useLayoutEffect, useState, useMemo, useRef, type RefObject, type ReactNode } from "react";
+import { groupVerbForms } from "./verb-forms";
+import { motionModeFromPreference, shouldPlayMotion, type MotionMode } from "./motion";
+import { useCompactPane } from "./compact-layout";
+import { createRequestGuard } from "./request-guard";
+import { createSelectionIntent } from "./selection-intent";
 import {
   Button,
   Input,
@@ -26,6 +31,11 @@ import {
   CircleXIcon,
   InfoIcon,
   BookOpenIcon,
+  BookOpenCheckIcon,
+  AudioLinesIcon,
+  DatabaseIcon,
+  ShapesIcon,
+  TagsIcon,
   Volume2Icon,
   ImageIcon,
   FileTextIcon,
@@ -41,7 +51,10 @@ import {
   ZapIcon,
   NewspaperIcon,
   BookPlusIcon,
+  NetworkIcon,
 } from "lucide-react";
+
+const MOTION_PREFERENCE_KEY = "led-motion-v2";
 
 type SearchResult = { id: number; hwd: string; pron: string; pos: string; def: string };
 type Entry = { hwd: string; pron: string; pos: string; def: string; html: string; previewId: string | null; top1000: boolean; freqS: string | null; freqW: string | null };
@@ -196,10 +209,6 @@ function prefersReducedMotion(): boolean {
   } catch {
     return false;
   }
-}
-// Motion On (full) always plays; Auto follows the Mac setting.
-function motionPlays(full: boolean): boolean {
-  return full || !prefersReducedMotion();
 }
 
 const DETAIL_IN = {
@@ -451,7 +460,7 @@ function SearchInput({
   }, [loading]);
   return (
     <div className="relative">
-      <SearchIcon className={["absolute left-2.5 top-1/2 -translate-y-1/2 size-4 pointer-events-none", showBusy ? "text-accent animate-pulse" : "text-tertiary"].join(" ")} />
+      <SearchIcon className={["absolute left-2.5 top-1/2 -translate-y-1/2 size-4 pointer-events-none", showBusy ? "text-accent motion-pulse animate-pulse" : "text-tertiary"].join(" ")} />
       {ghost && (
         <div className="absolute left-8 right-8 top-1/2 -translate-y-1/2 pointer-events-none flex items-center h-8 text-small overflow-hidden">
           <span className="invisible">{value}</span>
@@ -491,21 +500,31 @@ function SearchInput({
   );
 }
 
+function CompactBack({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <Button variant="transparent" size="small" onClick={onClick} aria-label={label} title={label}>
+      <ChevronLeftIcon className="size-4" aria-hidden="true" />
+      <span>{label}</span>
+    </Button>
+  );
+}
+
 // Top-level tab bar. A standalone Glaze Toolbar resolves the traffic-light
 // inset itself — never hand-roll left padding for it.
 function DictionaryTabs({
   activeTab,
   onChange,
   onAbout,
-  motionIsOn,
+  motionMode,
   onToggleMotion,
 }: {
   activeTab: string;
   onChange: (v: string) => void;
   onAbout: () => void;
-  motionIsOn: boolean;
+  motionMode: MotionMode;
   onToggleMotion: () => void;
 }) {
+  const motionIsOn = motionMode === "full";
   // Glide highlight: the pill sits behind the active menu and slides on
   // click/switch (target = activeTab only — no hover tracking). Measured
   // live so it tracks real trigger boxes.
@@ -538,8 +557,8 @@ function DictionaryTabs({
   }, [target]);
   return (
     <Toolbar>
-      <ToolbarRow>
-        <ToolbarContent>
+      <ToolbarRow className="led-main-toolbar-row">
+        <ToolbarContent className="led-main-toolbar-content">
           <TabsRoot value={activeTab} onValueChange={onChange}>
             <Tabs>
               <div ref={tabsRef} className="relative flex">
@@ -569,12 +588,13 @@ function DictionaryTabs({
             </Tabs>
           </TabsRoot>
         </ToolbarContent>
-        <ToolbarActions>
+        <ToolbarActions className="led-main-toolbar-actions">
           <Button
             variant="transparent"
             size="small"
-            title={motionIsOn ? "Motion always plays in full" : "Motion follows your Mac setting"}
-            aria-label={motionIsOn ? "Turn motion effects off" : "Turn motion effects on"}
+            title={motionIsOn ? "Full motion override is on; click to follow your Mac" : "Motion follows your Mac's Reduce Motion setting; click to always allow motion"}
+            aria-label={motionIsOn ? "Motion: On. Activate to follow the Mac setting." : "Motion: Auto. Activate to always allow motion."}
+            aria-pressed={motionIsOn}
             onClick={onToggleMotion}
           >
             <ZapIcon className={["size-4", motionIsOn ? "text-amber-400" : "text-foreground/50"].join(" ")} />
@@ -700,91 +720,88 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
           (the double-play). `contents` keeps every section a direct flex
           item, so spacing is unchanged. */}
       <div className="contents led-waterfall">
-      {/* Header — one line: headword left, streak + actions right. No wrap:
-          wrapping dropped the whole action group under the word on long
-          headwords, which read as a bug. */}
+      {/* Give the headword priority; study progress stays quiet and actions
+          remain a compact, accessible toolbar on the next line. */}
       <div className="flex flex-col gap-3">
-        <div className="flex items-start gap-3">
-          <div className="min-w-0 flex-1 mr-auto">
-            <Text as="h1" variant="heading1" className="tracking-tight">
-              {entry.hwd}
-            </Text>
-            <div className="flex flex-wrap items-center gap-1.5 mt-2">
-              {entry.pos && <Badge color="secondary" className="font-mono">{entry.pos}</Badge>}
-              {entry.pron && (
-                <Badge color="secondary" className="font-mono">
-                  /{entry.pron}/
-                </Badge>
-              )}
-              {entry.top1000 && <Badge color="secondary">Top 1000</Badge>}
-              {entry.freqS && (
-                <Badge color="secondary" title={`Top ${Number(entry.freqS) * 1000} most frequent in spoken English`}>S{entry.freqS}</Badge>
-              )}
-              {entry.freqW && (
-                <Badge color="secondary" title={`Top ${Number(entry.freqW) * 1000} most frequent in written English`}>W{entry.freqW}</Badge>
-              )}
-            </div>
+        <div className="min-w-0">
+          <Text as="h1" variant="heading1" className="tracking-tight break-words">
+            {entry.hwd}
+          </Text>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {entry.pos && <Badge color="secondary" className="font-mono">{entry.pos}</Badge>}
+            {entry.pron && (
+              <Badge color="secondary" className="font-mono">
+                /{entry.pron}/
+              </Badge>
+            )}
+            {entry.top1000 && <Badge color="secondary">Top 1000</Badge>}
+            {entry.freqS && (
+              <Badge color="secondary" title={`Top ${Number(entry.freqS) * 1000} most frequent in spoken English`}>S{entry.freqS}</Badge>
+            )}
+            {entry.freqW && (
+              <Badge color="secondary" title={`Top ${Number(entry.freqW) * 1000} most frequent in written English`}>W{entry.freqW}</Badge>
+            )}
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <div className="flex items-center gap-2 rounded-full bg-well border border-separator px-3 py-1.5 text-small shrink-0">
-              <FlameIcon className="size-4 text-support-orange" />
-              <Text variant="small-strong">{streak.count}-day streak</Text>
-              <Text variant="small" color="tertiary">· Level {streak.level}</Text>
-              <TrophyIcon className="size-3.5 text-support-yellow" />
-              <Text variant="small">{streak.xp} XP</Text>
-              <Text variant="small" color="tertiary">· ★ {streak.seen.length}</Text>
-              {showConfetti && <span className="animate-pulse text-small">✨</span>}
-            </div>
-            <div className="flex gap-1.5 shrink-0">
-              <Button
-                variant="transparent"
-                className="active:scale-95 transition-transform"
-                onClick={onToggleSave}
-                aria-label={saved ? "Remove from saved words" : "Save this word"}
-              >
-                <span className="flex items-center gap-1.5">
-                  <StarIcon className="size-4" fill={saved ? "currentColor" : "none"} />
-                  {saved ? "Saved" : "Save"}
-                </span>
-              </Button>
-              <Button
-                variant="transparent"
-                className="active:scale-95 transition-transform"
-                onClick={() => {
-                  const word = entry.hwd;
-                  void (async () => {
-                    const result = await playPronunciation(word);
-                    if (result === "played") toast.success(`Playing “${word}”`);
-                    else if (result === "spoke") toast.success(`Speaking “${word}”`);
-                    else if (result === "none") toast.error("Speech synthesis not available");
-                    /* cancelled: a newer click or word change already owns the speaker */
-                  })();
-                }}
-              >
-                <span className="flex items-center gap-1.5">
-                  <Volume2Icon className="size-4" />
-                  Audio
-                </span>
-              </Button>
-              <Button
-                variant="transparent"
-                className="active:scale-95 transition-transform"
-                onClick={() => {
-                  if (entry.previewId) {
-                    setShowImage(true);
-                    playBlip(SFX.image, 0.09);
-                  } else {
-                    playBlip(SFX.empty, 0.12);
-                    toast.info(`No illustration for “${entry.hwd}”`);
-                  }
-                }}
-              >
-                <span className="flex items-center gap-1.5">
-                  <ImageIcon className="size-4" />
-                  Image
-                </span>
-              </Button>
-            </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 study-progress rounded-full px-3 py-1.5 text-small text-secondary" role="group"
+            aria-label={`${streak.count}-day streak, level ${streak.level}, ${streak.xp} XP, ${streak.seen.length} words explored`}>
+            <FlameIcon className="size-3.5 text-support-orange" aria-hidden="true" />
+            <Text variant="small-strong">{streak.count}-day streak</Text>
+            <span aria-hidden="true">· Level {streak.level}</span>
+            <TrophyIcon className="size-3.5 text-support-yellow" aria-hidden="true" />
+            <span>{streak.xp} XP</span>
+            <span aria-hidden="true">· ★ {streak.seen.length}</span>
+            {showConfetti && <span className="motion-pulse animate-pulse text-small" aria-hidden="true">✨</span>}
+          </div>
+          <div className="flex flex-wrap items-center gap-1">
+            <Button
+              variant="transparent"
+              size="small"
+              className="active:scale-95 transition-transform"
+              onClick={onToggleSave}
+              aria-label={saved ? `Remove ${entry.hwd} from saved words` : `Save ${entry.hwd}`}
+              title={saved ? "Remove from saved words" : "Save word"}
+            >
+              <StarIcon className="size-4" fill={saved ? "currentColor" : "none"} />
+            </Button>
+            <Button
+              variant="transparent"
+              size="small"
+              className="active:scale-95 transition-transform"
+              onClick={() => {
+                const word = entry.hwd;
+                void (async () => {
+                  const result = await playPronunciation(word);
+                  if (result === "played") toast.success(`Playing “${word}”`);
+                  else if (result === "spoke") toast.success(`Speaking “${word}”`);
+                  else if (result === "none") toast.error("Speech synthesis not available");
+                  /* cancelled: a newer click or word change already owns the speaker */
+                })();
+              }}
+              aria-label={`Play pronunciation for ${entry.hwd}`}
+              title="Play pronunciation"
+            >
+              <Volume2Icon className="size-4" />
+            </Button>
+            <Button
+              variant="transparent"
+              size="small"
+              className="active:scale-95 transition-transform"
+              onClick={() => {
+                if (entry.previewId) {
+                  setShowImage(true);
+                  playBlip(SFX.image, 0.09);
+                } else {
+                  playBlip(SFX.empty, 0.12);
+                  toast.info(`No illustration for “${entry.hwd}”`);
+                }
+              }}
+              aria-label={entry.previewId ? `Show illustration for ${entry.hwd}` : `No illustration available for ${entry.hwd}`}
+              title={entry.previewId ? "Show illustration" : "No illustration available"}
+            >
+              <ImageIcon className="size-4" />
+            </Button>
           </div>
         </div>
         <Separator />
@@ -793,7 +810,7 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
       {entry.def && (
         <div className="rounded-xl bg-well border border-separator p-4">
           <Text variant="small-strong" color="secondary" className="uppercase tracking-widest flex items-center gap-1.5 mb-2">
-            <FileTextIcon className="size-3.5" /> Definition
+            <BookOpenIcon className="size-3.5" /> Definition
           </Text>
           <div className="leading-relaxed space-y-1">
             {entry.def.split('•').map((part, i) => {
@@ -857,11 +874,14 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
       {verb && (verb.past || verb.past_part) && (
         <div className="rounded-xl bg-panel border border-separator p-4">
           <Text variant="small-strong" color="secondary" className="uppercase tracking-widest flex items-center gap-1.5 mb-3">
-            <FileTextIcon className="size-3.5" /> Verb forms
+            <AudioLinesIcon className="size-3.5" /> Verb forms
           </Text>
-          <div className="flex flex-wrap gap-1.5">
-            {[verb.simple_form, verb.past, verb.past_part].filter(Boolean).map((f, i) => (
-              <Badge key={i} color="secondary" className="font-mono">{f}</Badge>
+          <div className="flex flex-wrap gap-2">
+            {groupVerbForms(verb).map(({ label, value }) => (
+              <div key={label} className="flex flex-wrap items-center gap-1.5 rounded-lg bg-well/60 border border-separator/50 px-2.5 py-1.5">
+                <Text variant="small" color="tertiary">{label}</Text>
+                <Badge color="secondary" className="font-mono">{value}</Badge>
+              </div>
             ))}
           </div>
         </div>
@@ -928,7 +948,7 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
       {corpus.length > 0 && (
         <div className="rounded-xl bg-panel border border-separator p-4">
           <Text variant="small-strong" color="secondary" className="uppercase tracking-widest flex items-center gap-1.5 mb-3">
-            <FileTextIcon className="size-3.5" /> Corpus examples
+            <DatabaseIcon className="size-3.5" /> Corpus examples
           </Text>
           <div className="space-y-2.5">
             {corpus.slice(0, 6).map((c, i) => (
@@ -946,7 +966,7 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
       {phrases.length > 0 && (
         <div className="rounded-xl bg-panel border border-separator p-4">
           <Text variant="small-strong" color="secondary" className="uppercase tracking-widest flex items-center gap-1.5 mb-3">
-            <QuoteIcon className="size-3.5" /> Phrases
+            <TagsIcon className="size-3.5" /> Phrases
           </Text>
           <div className="flex flex-wrap gap-1.5">
             {phrases.slice(0, 20).map((p, i) => (
@@ -959,7 +979,7 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
       {synonyms.length > 0 && (
         <div className="rounded-xl bg-panel border border-separator p-4">
           <Text variant="small-strong" color="secondary" className="uppercase tracking-widest flex items-center gap-1.5 mb-3">
-            <LibraryIcon className="size-3.5" /> Similar words
+            <ShapesIcon className="size-3.5" /> Similar words
           </Text>
           <div className="space-y-2.5">
             {synonyms.slice(0, 8).map((s, i) => (
@@ -1045,6 +1065,7 @@ function matchTopic(label: string, catalog: Topic[]): Topic | undefined {
     ?? catalog.find((t) => relatedKey(t.topic) === key);
 }
 function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { onLookup: (hwd: string) => void; onOpenGuide: (file: string) => void; requestTopic: string | null; onRequestOpened: () => void }) {
+  const compactPane = useCompactPane();
   const [query, setQuery] = useState("");
   const [topics, setTopics] = useState<Topic[]>([]);
   const [catalog, setCatalog] = useState<Topic[]>([]);
@@ -1054,6 +1075,7 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
   // Glosses behind the related-word chips: fetched per selected topic.
   const [ghost, setGhost] = useState("");
   const [loading, setLoading] = useState(false);
+  const [topicSearchGuard] = useState(createRequestGuard);
   const inputRef = useRef<HTMLInputElement | null>(null);
   // Snapshot of the pane currently on screen. Dictionary keeps the previous
   // entry until getEntry returns; we keep the previous topic until its
@@ -1070,26 +1092,37 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
   }, []);
 
   useEffect(() => {
+    let live = true;
     const t = setTimeout(async () => {
-      setLoading(true);
+      const isCurrent = topicSearchGuard.begin();
+      if (live && isCurrent()) setLoading(true);
       try {
         const r = await invoke<Topic[]>("dictionary:topics", { query, limit: 1000 });
+        if (!live || !isCurrent()) return;
         // Empty topics (no related words) are not listed — nothing to study.
         const list = (r ?? []).filter((t) => t.related.length > 0);
         setTopics(list);
         setVisibleCount(150);
-        if (list.length && (!selected || !list.find((x) => x.topic === selected.topic))) {
-          setSelected(list[0]);
+        if (list.length) {
+          setSelected((previous) =>
+            !previous || !list.some((topic) => topic.topic === previous.topic) ? list[0] : previous,
+          );
+        } else {
+          setSelected(null);
+          compactPane.showList();
         }
-        if (list.length === 0) setSelected(null);
         setGhost(ghostFor(query, list[0]?.topic));
       } catch (e) {
-        toast.error(String(e));
+        if (live && isCurrent()) toast.error(String(e));
       } finally {
-        setLoading(false);
+        if (live && isCurrent()) setLoading(false);
       }
     }, 150);
-    return () => clearTimeout(t);
+    return () => {
+      live = false;
+      topicSearchGuard.invalidate();
+      clearTimeout(t);
+    };
   }, [query]);
 
   // Glosses follow the selection (same staleness guard as HomeView fetches).
@@ -1120,6 +1153,7 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
     if (hit) {
       setQuery("");
       setSelected(hit);
+      compactPane.showDetail();
     }
     onRequestOpened();
   }, [requestTopic, topics]);
@@ -1130,7 +1164,7 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
     <SplitView
       storageKey="led-coach"
       listSize={{ default: 300, min: 240, max: 440 }}
-      className="h-full min-h-0"
+      className={`h-full min-h-0 led-compact-split ${compactPane.className}`}
       list={
         <ScrollArea
           className="glass-toolbar"
@@ -1189,6 +1223,7 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
               selectedItem={selected}
               onSelectedItemChange={(item) => {
                 setSelected(item as unknown as Topic);
+                compactPane.showDetail();
                 playBlip(SFX.coach, 0.09);
               }}
               getItemKey={(t: Topic) => t.topic}
@@ -1229,6 +1264,7 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
     >
       <ScrollArea
         className="glass-toolbar"
+        leading={compactPane.compact && compactPane.detailVisible ? <CompactBack label="All topics" onClick={compactPane.showList} /> : undefined}
       >
         <div className="px-1 pb-6 pt-4">
           {!pane ? (
@@ -1252,7 +1288,7 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
               </div>
               <div className="rounded-xl bg-support-blue-10 border border-separator p-4">
                 <Text variant="small-strong" color="secondary" className="uppercase tracking-widest flex items-center gap-1.5 mb-3">
-                  <LibraryIcon className="size-3.5" /> Related words
+                  <NetworkIcon className="size-3.5" /> Related words
                   <Badge size="small" color="secondary" className="shrink-0">{pane.topic.related.length}</Badge>
                 </Text>
                 <div className="space-y-2">
@@ -1307,7 +1343,7 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
                           {g ? (
                             <BookOpenIcon className="size-3.5 text-quaternary shrink-0 mt-0.5" />
                           ) : (
-                            <GraduationCapIcon className="size-3.5 text-quaternary shrink-0 mt-0.5" />
+                            <ShapesIcon className="size-3.5 text-quaternary shrink-0 mt-0.5" />
                           )}
                         </div>
                       </button>
@@ -1353,6 +1389,7 @@ const inFiles = (files: readonly string[], file: string) =>
 // User guide recovered from led_help.chm on the disc. Mirrors CoachView:
 // filterable list on the left, article on the right, honest states throughout.
 function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requestFile: string | null; onRequestOpened: () => void; onOpenCoach: (topic: string | null) => void; active: boolean }) {
+  const compactPane = useCompactPane();
   const [query, setQuery] = useState("");
   const [journey, setJourney] = useState("all");
   const [pages, setPages] = useState<HelpPage[]>([]);
@@ -1496,6 +1533,7 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
       if (j) setJourney(j.key);
       setQuery("");
       openPage(hit);
+      compactPane.showDetail();
     }
     onRequestOpened();
   }, [requestFile, pages]);
@@ -1540,7 +1578,7 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
     <List.Root
       items={items}
       selectedItem={selected}
-      onSelectedItemChange={(item) => { openPage(item as unknown as HelpPage); playBlip(SFX.guide, 0.09); }}
+      onSelectedItemChange={(item) => { openPage(item as unknown as HelpPage); compactPane.showDetail(); playBlip(SFX.guide, 0.09); }}
       getItemKey={(t: HelpPage) => t.file}
     >
       {items.map((t) => (
@@ -1602,7 +1640,7 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
     <SplitView
       storageKey="led-guide"
       listSize={{ default: 300, min: 240, max: 440 }}
-      className="h-full min-h-0"
+      className={`h-full min-h-0 led-compact-split ${compactPane.className}`}
       list={
         <ScrollArea
           className="glass-toolbar"
@@ -1672,6 +1710,7 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
           own heading — a third label is pure duplication. Back/forward stay. */}
       <ScrollArea
         className="guide-pane-ground"
+        leading={compactPane.compact && compactPane.detailVisible ? <CompactBack label="All pages" onClick={compactPane.showList} /> : undefined}
         actions={
           <div className="flex gap-1">
             {/* Plain buttons, deliberately NOT Glaze Button: zero chrome
@@ -1756,6 +1795,7 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
 }
 
 export function HomeView() {
+  const compactPane = useCompactPane();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   // Paged headword list (mirrors Coach topics): the backend caps rows per
@@ -1772,42 +1812,50 @@ export function HomeView() {
   // File the Exams Coach asked the Guide to open (consumed on arrival).
   const [guideRequest, setGuideRequest] = useState<string | null>(null);
   const [coachRequest, setCoachRequest] = useState<string | null>(null);
-  // In-app motion override: "auto" follows the OS Reduce Motion setting,
-  // "full" forces effects even under it. Footer toggle flips it.
-  const [motionIsOn, setMotionIsOn] = useState<boolean>(() => {
+  // Motion defaults to Auto; only the explicit On choice overrides the OS.
+  const [motionMode, setMotionMode] = useState<MotionMode>(() => {
     try {
-      const stored = localStorage.getItem("led-motion");
-      if (stored === "full" || stored === "auto") return stored === "full";
-      return window.matchMedia("(prefers-reduced-motion: reduce)").matches
-        ? false
-        : true;
+      // Older releases wrote `full` automatically on first launch, so that
+      // value cannot be trusted as an intentional override.
+      return motionModeFromPreference(localStorage.getItem(MOTION_PREFERENCE_KEY));
     } catch {
-      return false;
+      return "auto";
     }
   });
+  const motionIsOn = motionMode === "full";
+  const [reduceMotion, setReduceMotion] = useState(prefersReducedMotion);
   useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduceMotion(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  useEffect(() => {
+    document.body.classList.toggle("led-motion-full", motionIsOn);
     try {
-      document.body.classList.toggle("led-motion-full", motionIsOn);
-      localStorage.setItem("led-motion", motionIsOn ? "full" : "auto");
+      localStorage.setItem(MOTION_PREFERENCE_KEY, motionMode);
     } catch {
       /* private mode — session-only */
     }
-  }, [motionIsOn]);
-  // Tab body fade without remounting (remounting refetches lists). Same
-  // 240ms rise as Dictionary/Coach/Guide content. Auto still plays unless
-  // the Mac has Reduce Motion; Motion On forces it. Rapid clicks cancel.
+  }, [motionIsOn, motionMode]);
+  // Tab body fades without remounting its panes; rapid clicks cancel the
+  // previous animation. Auto reevaluates when the Mac setting changes.
   const tabBodyRef = useRef<HTMLDivElement | null>(null);
   const tabAnimRef = useRef<Animation | null>(null);
   const firstTabRender = useRef(true);
+  const previousActiveTab = useRef(activeTab);
   useEffect(() => {
+    const tabChanged = previousActiveTab.current !== activeTab;
+    previousActiveTab.current = activeTab;
     if (firstTabRender.current) {
       firstTabRender.current = false;
       return;
     }
     tabAnimRef.current?.cancel();
-    if (!motionPlays(motionIsOn)) return;
+    if (!tabChanged || !shouldPlayMotion(motionMode, reduceMotion)) return;
     tabAnimRef.current = tabBodyRef.current?.animate(DETAIL_IN.keyframes, DETAIL_IN.options) ?? null;
-  }, [activeTab]);
+  }, [activeTab, motionMode, reduceMotion]);
   const { streak, lookup, celebrate: showConfetti, reset: resetProgress } = useGamification();
   const [history, setHistory] = useState<string[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
@@ -1849,14 +1897,20 @@ export function HomeView() {
       live = false;
     };
   }, [selectedEntry?.hwd]);
-  // Set only by tapping a row — programmatic selects (startup, new search)
-  // must stay silent and earn no XP.
-  const userPicked = useRef(false);
+  // Selection intent is tied to one row ID so overlapping entry fetches
+  // cannot attribute XP/history to the wrong word.
+  const [userPicked] = useState(createSelectionIntent<number>);
+  const recordLookup = (hwd: string, publishHistory = (items: string[]) => setHistory(items ?? [])) => {
+    lookup(hwd);
+    void invoke<string[]>("library:historyPush", { hwd }).then(publishHistory).catch(() => {});
+  };
   const searchRef = useRef<HTMLInputElement | null>(null);
   // Latest query mirror + pending auto-select timer (search perf: typing
   // must not trigger getEntry + 5 study invokes per keystroke).
   const queryRef = useRef("");
   queryRef.current = query;
+  const [dictionarySearchGuard] = useState(createRequestGuard);
+  const [wordLookupGuard] = useState(createRequestGuard);
   const selectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ⌘K focuses search, Spotlight-style.
@@ -1875,9 +1929,7 @@ export function HomeView() {
     void (async () => {
       try {
         const s = await invoke<Stats>("dictionary:stats");
-        setStats(s);        const initial = await invoke<SearchResult[]>("dictionary:search", { query: "", limit: 150 });
-        setResults(initial);
-        if (initial.length) setSelected(initial[0]);
+        setStats(s);
         const [h, f] = await Promise.all([invoke<string[]>("library:history"), invoke<string[]>("library:favorites")]);
         setHistory(h ?? []);
         setFavorites(f ?? []);
@@ -1888,12 +1940,15 @@ export function HomeView() {
   }, []);
 
   useEffect(() => {
+    let live = true;
     const t = setTimeout(async () => {
+      const isCurrent = dictionarySearchGuard.begin();
       setLoading(true);
       try {
         const r = await invoke<SearchResult[]>("dictionary:search", { query, limit: dictVisible });
-        if (queryRef.current !== query) return;
+        if (!live || !isCurrent() || queryRef.current !== query) return;
         setResults(r);
+        if (r.length === 0) compactPane.showList();
         // Predictive: ghost the rest of the top result
         setGhost(ghostFor(query, r[0]?.hwd));
         // Deferred auto-select: selecting publishes getEntry (full HTML)
@@ -1901,7 +1956,7 @@ export function HomeView() {
         // backend round-trips by every character typed. Wait for a pause.
         if (selectTimer.current) clearTimeout(selectTimer.current);
         selectTimer.current = setTimeout(() => {
-          if (queryRef.current !== query) return;
+          if (!live || !isCurrent() || queryRef.current !== query) return;
           setSelected((prev) => {
             if (r.length && (!prev || !r.find((x) => x.id === prev.id))) return r[0];
             if (r.length === 0) return null;
@@ -1909,12 +1964,14 @@ export function HomeView() {
           });
         }, 350);
       } catch (e) {
-        toast.error(String(e));
+        if (live && isCurrent() && queryRef.current === query) toast.error(String(e));
       } finally {
-        setLoading(false);
+        if (live && isCurrent() && queryRef.current === query) setLoading(false);
       }
     }, 150);
     return () => {
+      live = false;
+      dictionarySearchGuard.invalidate();
       clearTimeout(t);
       if (selectTimer.current) clearTimeout(selectTimer.current);
     };
@@ -1930,18 +1987,11 @@ export function HomeView() {
     let live = true;
     void (async () => {
       try {
+        const recordPick = userPicked.consume(selected.id);
         const e = await invoke<Entry | null>("dictionary:getEntry", { id: selected.id });
         if (!live) return;
         setSelectedEntry(e);
-        if (!userPicked.current) return;
-        userPicked.current = false;
-        lookup(selected.hwd);
-        try {
-          const h = await invoke<string[]>("library:historyPush", { hwd: selected.hwd });
-          if (live) setHistory(h ?? []);
-        } catch {
-          /* history is best-effort */
-        }
+        if (recordPick) recordLookup(selected.hwd, (h) => { if (live) setHistory(h ?? []); });
       } catch (err) {
         if (live) toast.error(String(err));
       }
@@ -1956,17 +2006,26 @@ export function HomeView() {
   // honest notice instead of a silent blank body. Shared by Coach
   // related-words and mistake-note cross-references.
   const lookupWord = (hwd: string) => {
-    userPicked.current = true;
+    const q = hwd.trim().toLowerCase();
+    if (!q) return;
+    wordLookupGuard.invalidate();
+    userPicked.clear();
     playBlip(SFX.lookup);
-    const q = hwd.toLowerCase();
+    const isCurrent = wordLookupGuard.begin();
     setQuery(q);
     setActiveTab("dictionary");
     void (async () => {
       try {
         const r = await invoke<SearchResult[]>("dictionary:search", { query: q, limit: 10 });
+        if (!isCurrent() || queryRef.current !== q) return;
         const hit = r.find((x) => x.hwd.toLowerCase() === q) ?? r[0];
-        if (hit) setSelected(hit);
-        else toast.info(`No dictionary entry for “${hwd}”`);
+        if (hit) {
+          setSelected(hit);
+          recordLookup(hit.hwd);
+          if (compactPane.compact) compactPane.showDetail();
+        } else {
+          toast.info(`No dictionary entry for “${hwd}”`);
+        }
       } catch {
         /* debounced search effect covers failures */
       }
@@ -1978,7 +2037,7 @@ export function HomeView() {
       {/* Hidden drag region for window */}
       <div className="h-0 drag-region" />
 
-      <DictionaryTabs activeTab={activeTab} onChange={(v) => { setActiveTab(v); playBlip(SFX.tab, 0.08); }} onAbout={() => { setShowAbout(true); playBlip(SFX.about, 0.1); }} motionIsOn={motionIsOn} onToggleMotion={() => { setMotionIsOn((m) => !m); playBlip(SFX.motion, 0.09); }} />
+      <DictionaryTabs activeTab={activeTab} onChange={(v) => { setActiveTab(v); playBlip(SFX.tab, 0.08); }} onAbout={() => { setShowAbout(true); playBlip(SFX.about, 0.1); }} motionMode={motionMode} onToggleMotion={() => { setMotionMode((mode) => mode === "full" ? "auto" : "full"); playBlip(SFX.motion, 0.09); }} />
 
       {/* NOTE: title+description must stay SET (hidden, not removed). Glaze
           Dialog only takes the modal/portal path when trigger, title,
@@ -1989,27 +2048,27 @@ export function HomeView() {
         onOpenChange={setShowAbout}
         title="About"
         hideTitle
-        description="Longman Exams Dictionary for upper-intermediate to advanced learners."
+        description="An independent, fully offline Mac port of the classic 2006 Longman Exams Dictionary."
         hideDescription
       >
         <div className="led-dialog-in flex flex-col items-center text-center gap-5 py-2">
           <div className="w-16 h-16 rounded-[18px] flex items-center justify-center shadow-lg" style={{ backgroundColor: "var(--red)" }}>
-            <GraduationCapIcon className="size-8" style={{ color: "#fff" }} />
+            <BookOpenCheckIcon className="size-8" style={{ color: "#fff" }} />
           </div>
           <div className="space-y-1">
             <Text as="h2" variant="heading1" className="tracking-tight">
               Longman Exams Dictionary
             </Text>
             <Text variant="small" color="secondary">
-              For Upper Intermediate – Advanced Learners · Pearson
+              Independent Mac edition · Classic Longman dictionary (2006)
             </Text>
           </div>
           <div className="grid grid-cols-2 gap-2 w-full">
             {[
-              [stats ? stats.totalEntries.toLocaleString() : "…", "headwords"],
-              ["212,000", "words, phrases, meanings"],
-              ["160,000", "examples of natural use"],
-              ["762", "topics with study words"],
+              [stats ? stats.totalEntries.toLocaleString() : "…", "dictionary headwords"],
+              ["450,000+", "corpus examples"],
+              ["762", "exam study topics"],
+              ["5", "exam guides"],
             ].map(([n, label]) => (
               <div key={label} className="rounded-xl bg-well border border-separator px-3 py-2.5">
                 <Text variant="large-strong">{n}</Text>
@@ -2041,7 +2100,7 @@ export function HomeView() {
             {resetArmed ? "Tap again to erase streak, XP and level" : "Reset learning progress"}
           </button>
           <Text variant="small" color="tertiary">
-            Your key to exam success
+            Exam-ready vocabulary. Clearer choices. All offline.
           </Text>
         </div>
       </Dialog>
@@ -2058,7 +2117,7 @@ export function HomeView() {
         <SplitView
         storageKey="led-dictionary-v2"
         listSize={{ default: 300, min: 240, max: 440 }}
-        className="h-full min-h-0"
+        className={`h-full min-h-0 led-compact-split ${compactPane.className}`}
         list={
           <ScrollArea
             className="glass-toolbar"
@@ -2076,7 +2135,7 @@ export function HomeView() {
                 <div className="mt-2">
                 <SearchInput
                   value={query}
-                  onChange={(v) => { setDictVisible(150); setQuery(v); }}
+                  onChange={(v) => { wordLookupGuard.invalidate(); userPicked.clear(); setDictVisible(150); setQuery(v); }}
                   ghost={ghost}
                   onClearGhost={() => setGhost("")}
                   loading={loading}
@@ -2093,9 +2152,7 @@ export function HomeView() {
                             <button
                               key={`h-${h}`}
                               onClick={() => {
-                                userPicked.current = true;
-                                playBlip(SFX.lookup);
-                                setQuery(h);
+                                lookupWord(h);
                               }}
                               className="cursor-pointer"
                             >
@@ -2117,9 +2174,7 @@ export function HomeView() {
                             <button
                               key={`f-${f}`}
                               onClick={() => {
-                                userPicked.current = true;
-                                playBlip(SFX.lookup);
-                                setQuery(f);
+                                lookupWord(f);
                               }}
                               className="cursor-pointer"
                             >
@@ -2152,9 +2207,17 @@ export function HomeView() {
                 items={results}
                 selectedItem={selected}
                 onSelectedItemChange={(item) => {
-                  userPicked.current = true;
+                  const picked = item as unknown as SearchResult;
+                  wordLookupGuard.invalidate();
+                  if (selected?.id === picked.id) {
+                    userPicked.clear();
+                    recordLookup(picked.hwd);
+                  } else {
+                    userPicked.arm(picked.id);
+                    setSelected(picked);
+                  }
                   playBlip(SFX.lookup);
-                  setSelected(item as unknown as SearchResult);
+                  if (compactPane.compact) compactPane.showDetail();
                 }}
                 getItemKey={(r: SearchResult) => String(r.id)}
               >
@@ -2198,6 +2261,7 @@ export function HomeView() {
       >
         <ScrollArea
           className="glass-toolbar"
+          leading={compactPane.compact && compactPane.detailVisible ? <CompactBack label="All headwords" onClick={compactPane.showList} /> : undefined}
           title={
             selectedEntry
               ? [
@@ -2262,12 +2326,12 @@ export function HomeView() {
       </div>
 
       <div className="app-footer h-7 shrink-0 border-t border-separator bg-panel flex items-center px-3 text-small text-tertiary gap-2">
-        <GraduationCapIcon className="size-3.5" />
+        <GraduationCapIcon className="size-3.5" aria-hidden="true" />
         <Text variant="small" color="tertiary" truncate>
-          For Upper Intermediate – Advanced Learners · 212,000 words, phrases and meanings
+          42,380 headwords · 762 exam study topics
         </Text>
         <div className="flex-1" />
-        <Text variant="small" color="quaternary">Fully offline • Pearson 2006</Text>
+        <Text variant="small" color="quaternary">Independent edition · Fully offline</Text>
       </div>
     </div>
   );

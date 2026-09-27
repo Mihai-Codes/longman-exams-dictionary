@@ -59,6 +59,41 @@ for (const f of disk) {
 check("no duplicate headings in help pages", !failures.some((f) => f.startsWith("no duplicate headings")));
 check("help links resolve", broken.length === 0);
 
+// The old Dictionary help page used a layout table; it is now a semantic,
+// responsive list. The frequency reference remains a real accessible table.
+const dictionaryMenu = readFileSync("data/help/dictmenu.htm", "utf8");
+const dictionaryMenuLinks = [...dictionaryMenu.matchAll(/<a\b[^>]*href="([^"]+)"/gi)].map((m) => m[1].toLowerCase());
+check("dictionary guide menu is a responsive list, not a layout table",
+  /<ul class="guide-link-grid">/i.test(dictionaryMenu) && !/<table\b/i.test(dictionaryMenu) && dictionaryMenuLinks.length === 11 && dictionaryMenuLinks.every((f) => disk.includes(f)));
+const frequencyGuide = readFileSync("data/help/wordfrequency.htm", "utf8");
+check("frequency table has caption and scoped headers",
+  /<caption>/i.test(frequencyGuide) && /<th scope="col">/i.test(frequencyGuide) &&
+  [...frequencyGuide.matchAll(/<th scope="row">/gi)].length === 6 &&
+  [...frequencyGuide.matchAll(/<td>/gi)].length === 6);
+check("compact Guide table text remains legible in dark mode",
+  /\.led-guide-html th,[\s\S]*?color:\s*var\(--fg\)/.test(readFileSync("renderer/styles.css", "utf8")) &&
+  /\.dark \.led-guide-html tbody th\[scope="row"\][\s\S]*?color:\s*#9fb4d9/.test(readFileSync("renderer/styles.css", "utf8")));
+const styleSource = readFileSync("renderer/styles.css", "utf8");
+check("guide tables and menu grid have responsive styles",
+  /\.led-guide-html table[\s\S]*?width:\s*100%/.test(styleSource) &&
+  /\.led-guide-html \.guide-link-grid[\s\S]*?grid-template-columns/.test(styleSource));
+check("compact master/detail panes have list and detail states",
+  /led-compact-split\.led-compact-list/.test(styleSource) &&
+  /led-compact-split\.led-compact-detail/.test(styleSource) &&
+  (src.match(/className=\{`h-full min-h-0 led-compact-split/g) ?? []).length === 3);
+check("compact Dictionary starts on the populated headword list",
+  /export function HomeView\(\) \{\s*const compactPane = useCompactPane\(\);/.test(src));
+check("compact detail panes provide visible back-to-list navigation",
+  (src.match(/<CompactBack label=/g) ?? []).length === 3 &&
+  /<span>\{label\}<\/span>/.test(src) &&
+  src.includes("if (r.length === 0) compactPane.showList()"));
+check("compact breakpoint matches compact CSS and pane hook",
+  /COMPACT_LAYOUT_MAX_WIDTH = 640/.test(readFileSync("renderer/main/compact-layout.ts", "utf8")) &&
+  /@media \(max-width: 640px\)/.test(styleSource));
+check("compact toolbar stacks controls without fixed-height clipping",
+  /\.led-main-toolbar-row[\s\S]*?height:\s*auto !important/.test(styleSource) &&
+  src.includes("led-main-toolbar-content") && src.includes("led-main-toolbar-actions"));
+
 // Parent before child, related pages together — the side panel walks this
 // flattened order. Relative pairs (not the full list) so journeys can grow.
 const idx = (f) => journeys.indexOf(f);

@@ -6,6 +6,7 @@ import { dictionaryHandlers } from "./dictionary.js";
 import { libraryHandlers } from "./library.js";
 import { getSettingsWindow, openSettingsWindow } from "../windows/settings-window.js";
 import { ipcMain, logger } from "@glaze/core/backend";
+import { onlineDictionarySlug } from "./input.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,27 +31,27 @@ export function registerHandlers(): void {
   });
 
   // Dictionary handlers — native replacement for LED Windows app
-  ipcMain.handle("dictionary:search", async (_e, p: { query: string; limit?: number }) => {
+  ipcMain.handle("dictionary:search", async (_e, p: { query?: unknown; limit?: unknown } | null) => {
     return dictionaryHandlers.search(p);
   });
-  ipcMain.handle("dictionary:getEntry", async (_e, p: { id?: number; hwd?: string }) => {
+  ipcMain.handle("dictionary:getEntry", async (_e, p: { id?: unknown; hwd?: unknown } | null) => {
     // normalize: frontend may send {id} or {hwd}
-    if (typeof (p as any).id === "number") return dictionaryHandlers.getEntry({ id: (p as any).id });
-    if ((p as any).hwd) return dictionaryHandlers.getEntry({ hwd: (p as any).hwd });
-    return dictionaryHandlers.getEntry(p as any);
+    if (typeof p?.id === "number") return dictionaryHandlers.getEntry({ id: p.id });
+    if (typeof p?.hwd === "string") return dictionaryHandlers.getEntry({ hwd: p.hwd });
+    return dictionaryHandlers.getEntry(p);
   });
   ipcMain.handle("dictionary:stats", async () => dictionaryHandlers.stats());
-  ipcMain.handle("dictionary:image", async (_e, p: { id: string }) => dictionaryHandlers.image(p));
-  ipcMain.handle("dictionary:audio", async (_e, p: { hwd: string }) => dictionaryHandlers.audio(p));
+  ipcMain.handle("dictionary:image", async (_e, p: { id?: unknown } | null) => dictionaryHandlers.image(p));
+  ipcMain.handle("dictionary:audio", async (_e, p: { hwd?: unknown } | null) => dictionaryHandlers.audio(p));
   ipcMain.handle("dictionary:helpList", async () => dictionaryHandlers.helpList());
-  ipcMain.handle("dictionary:helpPage", async (_e, p: { file: string }) => dictionaryHandlers.helpPage(p));
-  ipcMain.handle("dictionary:thesaurus", async (_e, p: { hwd: string }) => dictionaryHandlers.thesaurus(p));
-  ipcMain.handle("dictionary:phrases", async (_e, p: { hwd: string }) => dictionaryHandlers.phrases(p));
-  ipcMain.handle("dictionary:corpus", async (_e, p: { hwd: string }) => dictionaryHandlers.corpus(p));
-  ipcMain.handle("dictionary:verb", async (_e, p: { hwd: string }) => dictionaryHandlers.verb(p));
-  ipcMain.handle("dictionary:errors", async (_e, p: { hwd: string }) => dictionaryHandlers.errors(p));
-  ipcMain.handle("dictionary:topics", async (_e, p: { query: string; limit?: number }) => dictionaryHandlers.topics(p));
-  ipcMain.handle("dictionary:topicEntries", async (_e, p: { words: string[] }) => dictionaryHandlers.topicEntries(p));
+  ipcMain.handle("dictionary:helpPage", async (_e, p: { file?: unknown } | null) => dictionaryHandlers.helpPage(p));
+  ipcMain.handle("dictionary:thesaurus", async (_e, p: { hwd?: unknown } | null) => dictionaryHandlers.thesaurus(p));
+  ipcMain.handle("dictionary:phrases", async (_e, p: { hwd?: unknown } | null) => dictionaryHandlers.phrases(p));
+  ipcMain.handle("dictionary:corpus", async (_e, p: { hwd?: unknown } | null) => dictionaryHandlers.corpus(p));
+  ipcMain.handle("dictionary:verb", async (_e, p: { hwd?: unknown } | null) => dictionaryHandlers.verb(p));
+  ipcMain.handle("dictionary:errors", async (_e, p: { hwd?: unknown } | null) => dictionaryHandlers.errors(p));
+  ipcMain.handle("dictionary:topics", async (_e, p: { query?: unknown; limit?: unknown } | null) => dictionaryHandlers.topics(p));
+  ipcMain.handle("dictionary:topicEntries", async (_e, p: { words?: unknown } | null) => dictionaryHandlers.topicEntries(p));
 
   // Personal library — recent lookups + saved words in app userData
   ipcMain.handle("library:history", async () => libraryHandlers.history());
@@ -62,9 +63,9 @@ export function registerHandlers(): void {
   // Opt-in bridge to the current online dictionary. Host is fixed in the
   // template — only the headword slug varies, so this channel can never be
   // aimed at an arbitrary URL (phishing-safe by construction).
-  ipcMain.handle("shell:openOnline", async (_e, p: { hwd: string }) => {
-    const slug = (p?.hwd || "").toLowerCase().trim().replace(/\s+/g, "-");
-    if (!slug || !/^[a-z0-9'’%.-]+(?:-[a-z0-9'’%.-]+)*$/.test(slug)) throw new Error("bad headword");
+  ipcMain.handle("shell:openOnline", async (_e, p: { hwd?: unknown } | null) => {
+    const slug = onlineDictionarySlug(p?.hwd);
+    if (!slug) throw new Error("bad headword");
     const url = `https://www.ldoceonline.com/dictionary/${encodeURIComponent(slug)}`;
     await new Promise<void>((resolve, reject) => {
       execFile("/usr/bin/open", [url], (e) => (e ? reject(e) : resolve()));

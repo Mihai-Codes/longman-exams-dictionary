@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { logger } from "@glaze/core/backend";
+import { boundedInteger, normalizedQuery, normalizedString, normalizedStrings } from "./input.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -132,9 +133,9 @@ function previewOf(html: string): string | null {
 // valid disc images have trailing garbage after the EOI or non-standard
 // endings, and rejecting them left 191 entries with no illustration.
 const imagePathCache = new Map<string, string | null>();
-function findImage(id: string): string | null {
-  const safe = (id || "").replace(/[^0-9a-zA-Z.]/g, "");
-  if (!safe) return null;
+function findImage(id: unknown): string | null {
+  if (typeof id !== "string" || id.length !== 12 || !/^\d{8}\.jpg$/i.test(id)) return null;
+  const safe = id;
   const hit = imagePathCache.get(safe);
   if (hit !== undefined) return hit;
   const candidates = [
@@ -230,13 +231,21 @@ function openDb(): DatabaseSync | null {
     dbFailed = true;
     return null;
   }
+  let candidate: DatabaseSync | null = null;
   try {
-    db = new DatabaseSync(p, { readOnly: true });
-    const n = (db.prepare("SELECT count(*) AS n FROM entries").get() as { n: number }).n;
+    candidate = new DatabaseSync(p, { readOnly: true });
+    const n = (candidate.prepare("SELECT count(*) AS n FROM entries").get() as { n: number }).n;
+    db = candidate;
     logger.info("dictionary", `SQLite open: ${n} entries from ${p}`);
     return db;
   } catch (e) {
+    try {
+      candidate?.close();
+    } catch {
+      /* failed connections may already be closed */
+    }
     logger.error("dictionary", `SQLite open failed: ${String(e)} — JSON fallback`);
+    db = null;
     dbFailed = true;
     return null;
   }
@@ -297,11 +306,15 @@ function searchJson(q: string, limit: number) {
 }
 
 export const dictionaryHandlers = {
-  search: async (params: { query: string; limit?: number }) => {
-    const q = (params.query || "").trim().toLowerCase();
+  search: async (params: { query?: unknown; limit?: unknown } | null) => {
+    if (params?.limit !== undefined && params?.limit !== null && (typeof params.limit !== "number" || !Number.isFinite(params.limit))) {
+      return [];
+    }
+    const q = normalizedQuery(params?.query);
+    if (q === null) return [];
     // Paged browsing (empty/short queries walk the A-Z list) needs headroom
     // past one screen; exact/prefix paths stay index-cheap at any limit.
-    const limit = Math.min(params.limit ?? 50, 1000);
+    const limit = boundedInteger(params?.limit, 50, 1000);
     const d = openDb();
     if (!d) return searchJson(q, limit);
     try {
@@ -357,30 +370,30 @@ export const dictionaryHandlers = {
     }
   },
 
-  getEntry: async (params: { id: number } | { hwd: string }) => {
+  getEntry: async (params: { id?: unknown; hwd?: unknown } | null) => {
+    const id = typeof params?.id === "number" && Number.isSafeInteger(params.id) && params.id >= 0 ? params.id : null;
+    const hwd = normalizedString(params?.hwd);
+    if (id === null && !hwd) return null;
+    if (params?.id !== undefined && (typeof params.id !== "number" || !Number.isSafeInteger(params.id) || params.id < 0)) return null;
+
     const d = openDb();
     if (d) {
       try {
-        if ("id" in params && typeof params.id === "number") {
-          const r = d.prepare(
-            `SELECT e.hwd AS hwd, e.pron AS pron, e.pos AS pos, e.def AS def, e.html AS html, ${FREQ_COLS} FROM entries e WHERE e.id = ?`,
-          ).get(params.id) as Record<string, unknown> | undefined;
-          return r ? rowToEntry(r) : null;
-        }
-        if ("hwd" in params) {
-          const r = d.prepare(
-            `SELECT e.hwd AS hwd, e.pron AS pron, e.pos AS pos, e.def AS def, e.html AS html, ${FREQ_COLS} FROM entries e WHERE e.hwd_lower = ? LIMIT 1`,
-          ).get(params.hwd.toLowerCase()) as Record<string, unknown> | undefined;
-          return r ? rowToEntry(r) : null;
-        }
+        const r = id !== null
+          ? d.prepare(
+              `SELECT e.hwd AS hwd, e.pron AS pron, e.pos AS pos, e.def AS def, e.html AS html, ${FREQ_COLS} FROM entries e WHERE e.id = ?`,
+            ).get(id) as Record<string, unknown> | undefined
+          : d.prepare(
+              `SELECT e.hwd AS hwd, e.pron AS pron, e.pos AS pos, e.def AS def, e.html AS html, ${FREQ_COLS} FROM entries e WHERE e.hwd_lower = ? LIMIT 1`,
+            ).get(hwd) as Record<string, unknown> | undefined;
+        return r ? rowToEntry(r) : null;
       } catch (e) {
         logger.error("dictionary", `getEntry failed: ${String(e)}`);
       }
     }
     const entries = loadJson();
-    if ("id" in params && typeof params.id === "number") return entries[params.id] ?? null;
-    if ("hwd" in params) return entries.find((e) => e.hwd.toLowerCase() === params.hwd.toLowerCase()) ?? null;
-    return null;
+    if (id !== null) return entries[id] ?? null;
+    return entries.find((e) => e.hwd.toLowerCase() === hwd) ?? null;
   },
 
   stats: async () => {
@@ -389,10 +402,10 @@ export const dictionaryHandlers = {
     return { totalEntries: total };
   },
 
-  image: async (params: { id: string }): Promise<string | null> => {
+  image: async (params: { id?: unknown } | null): Promise<string | null> => {
     // Preview JPEG extracted from the disc at build time (see findImage —
     // truncated files validate to null and are never served).
-    const p = findImage(params.id || "");
+    const p = findImage(params?.id);
     if (!p) return null;
     try {
       return `data:image/jpeg;base64,${fs.readFileSync(p).toString("base64")}`;
@@ -401,9 +414,9 @@ export const dictionaryHandlers = {
     }
   },
 
-  audio: async (params: { hwd: string }): Promise<string | null> => {
+  audio: async (params: { hwd?: unknown } | null): Promise<string | null> => {
     // US pronunciation MP3 recovered from the disc: data/audio/sound/<file>
-    const q = (params.hwd || "").trim().toLowerCase();
+    const q = normalizedString(params?.hwd);
     if (!q) return null;
     const file = loadAudioMap().get(q);
     if (!file) return null;
@@ -443,9 +456,9 @@ export const dictionaryHandlers = {
     }
   },
 
-  helpPage: async (params: { file: string }): Promise<{ file: string; title: string; html: string } | null> => {
+  helpPage: async (params: { file?: unknown } | null): Promise<{ file: string; title: string; html: string } | null> => {
     const dir = helpDir();
-    const safe = safeHelpFile(params.file || "");
+    const safe = safeHelpFile(typeof params?.file === "string" ? params.file : "");
     if (!dir || !safe) return null;
     try {
       const raw = fs.readFileSync(path.join(dir, safe), "utf-8");
@@ -535,24 +548,24 @@ export const dictionaryHandlers = {
     }
   },
 
-  thesaurus: async (params: { hwd: string }): Promise<{ assoc: string; gloss: string }[]> => {
+  thesaurus: async (params: { hwd?: unknown } | null): Promise<{ assoc: string; gloss: string }[]> => {
     const d = openDb();
     if (!d) return [];
     try {
       return d.prepare("SELECT assoc, gloss FROM thesaurus WHERE hwd_lower = ? ORDER BY assoc LIMIT 30").all(
-        (params.hwd || "").toLowerCase(),
+        normalizedString(params?.hwd),
       ) as { assoc: string; gloss: string }[];
     } catch {
       return [];
     }
   },
 
-  phrases: async (params: { hwd: string }): Promise<string[]> => {
+  phrases: async (params: { hwd?: unknown } | null): Promise<string[]> => {
     const d = openDb();
     if (!d) return [];
     try {
       const rows = d.prepare("SELECT phrase FROM phrases WHERE hwd_lower = ? LIMIT 60").all(
-        (params.hwd || "").toLowerCase(),
+        normalizedString(params?.hwd),
       ) as { phrase: string }[];
       return rows.map((r) => r.phrase);
     } catch {
@@ -560,26 +573,26 @@ export const dictionaryHandlers = {
     }
   },
 
-  corpus: async (params: { hwd: string }): Promise<{ source: string; sentence: string }[]> => {
+  corpus: async (params: { hwd?: unknown } | null): Promise<{ source: string; sentence: string }[]> => {
     const d = openDb();
     if (!d) return [];
     try {
       // "(no examples)" placeholder rows never leave the backend — an empty
       // section reads as a bug, and the client can't tell filler from text.
       return d.prepare("SELECT source, sentence FROM corpus WHERE hwd_lower = ? AND TRIM(sentence) <> '' AND TRIM(sentence) NOT LIKE '(no%' LIMIT 12").all(
-        (params.hwd || "").toLowerCase(),
+        normalizedString(params?.hwd),
       ) as { source: string; sentence: string }[];
     } catch {
       return [];
     }
   },
 
-  verb: async (params: { hwd: string }): Promise<{ simple_form: string; past: string; past_part: string } | null> => {
+  verb: async (params: { hwd?: unknown } | null): Promise<{ simple_form: string; past: string; past_part: string } | null> => {
     const d = openDb();
     if (!d) return null;
     try {
       const r = d.prepare("SELECT simple_form, past, past_part FROM verb WHERE hwd_lower = ? LIMIT 1").get(
-        (params.hwd || "").toLowerCase(),
+        normalizedString(params?.hwd),
       ) as { simple_form: string; past: string; past_part: string } | undefined;
       return r ?? null;
     } catch {
@@ -587,23 +600,27 @@ export const dictionaryHandlers = {
     }
   },
 
-  errors: async (params: { hwd: string }): Promise<{ bad: string; good: string; info: string }[]> => {
+  errors: async (params: { hwd?: unknown } | null): Promise<{ bad: string; good: string; info: string }[]> => {
     const d = openDb();
     if (!d) return [];
     try {
       return d.prepare("SELECT bad, good, info FROM errors WHERE hwd_lower = ? LIMIT 6").all(
-        (params.hwd || "").toLowerCase(),
+        normalizedString(params?.hwd),
       ) as { bad: string; good: string; info: string }[];
     } catch {
       return [];
     }
   },
 
-  topics: async (params: { query: string; limit?: number }): Promise<{ topic: string; related: string[] }[]> => {
+  topics: async (params: { query?: unknown; limit?: unknown } | null): Promise<{ topic: string; related: string[] }[]> => {
+    if (params?.limit !== undefined && params?.limit !== null && (typeof params.limit !== "number" || !Number.isFinite(params.limit))) {
+      return [];
+    }
+    const q = normalizedQuery(params?.query);
+    if (q === null) return [];
     const d = openDb();
     if (!d) return [];
-    const limit = Math.min(params.limit ?? 1000, 2000);
-    const q = (params.query || "").trim().toLowerCase();
+    const limit = boundedInteger(params?.limit, 1000, 2000);
     try {
       const rows = q
         ? (d.prepare("SELECT topic, related FROM topics WHERE topic_lower LIKE ? ESCAPE '\\' ORDER BY topic LIMIT ?").all(
@@ -617,7 +634,8 @@ export const dictionaryHandlers = {
       return rows.map((r) => {
         let related: string[] = [];
         try {
-          related = JSON.parse(r.related) as string[];
+          const parsed: unknown = JSON.parse(r.related);
+          related = Array.isArray(parsed) ? parsed.filter((word): word is string => typeof word === "string") : [];
         } catch {
           /* keep empty */
         }
@@ -630,9 +648,9 @@ export const dictionaryHandlers = {
 
   // Related-word glosses for the Coach detail pane: one batched lookup so
   // each word shows its part of speech + short definition, not just a chip.
-  topicEntries: async (params: { words: string[] }): Promise<{ hwd: string; pos: string; def: string; top1000: boolean }[]> => {
+  topicEntries: async (params: { words?: unknown } | null): Promise<{ hwd: string; pos: string; def: string; top1000: boolean }[]> => {
     const d = openDb();
-    const words = [...new Set((params.words || []).map((w) => (w || "").toLowerCase()))].filter(Boolean).slice(0, 30);
+    const words = normalizedStrings(params?.words, 30);
     if (!d || words.length === 0) return [];
     try {
       const rows = d.prepare(`SELECT e.hwd_lower AS k, e.hwd AS hwd, e.pos AS pos, e.def AS def, (f.s LIKE '%1%' OR f.w LIKE '%1%') AS top1000 FROM entries e LEFT JOIN wordfreq f ON f.hwd_lower = e.hwd_lower WHERE e.hwd_lower IN (${words.map(() => "?").join(",")})`).all(
