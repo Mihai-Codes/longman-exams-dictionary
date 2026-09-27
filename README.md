@@ -27,7 +27,10 @@ Unofficial native macOS port of the classic **Longman Exams Dictionary CD-ROM (2
 
 - **Dictionary** — 42,380 headwords with pronunciations, verb forms, collocations and corpus examples; Top 1000 exam-priority markers plus Longman Communication 3000 frequency bands (S1–S3 spoken, W1–W3 written); debounced instant search with A–Z paging
 - **Exams Coach** — 762 exam topics with related-word glosses, exam-guide chips and study streaks with XP
-- **Guide** — the study handbook as five readable journeys (start here, dictionary skills, exam guides, choosing a precise word, about)
+- **Guide** — the study handbook as five readable journeys (start here, dictionary skills, exam guides, choosing a precise word, about), with accessible tables
+- **Compact windows** — Dictionary, Exams Coach and Guide switch to full-width list/detail navigation below 640px; desktop split views remain unchanged
+- **Clearer entries** — long headwords wrap cleanly and repeated verb forms are grouped
+- **Motion preferences** — Auto follows macOS Reduce Motion, with an explicit On option
 - **Common mistakes** — wrong vs right minimal pairs with plain explanations and tappable cross-reference jumps
 - **Fully offline** — SQLite corpus, pronunciation audio and illustrations all on-device; light and dark mode
 
@@ -45,12 +48,22 @@ Unofficial native macOS port of the classic **Longman Exams Dictionary CD-ROM (2
 
 ```
 sources/
-├── main/handlers/dictionary.ts  # SQLite + search + help backend
-├── renderer/main/home-view.tsx  # all three tabs
-├── renderer/styles.css          # Pearson/Longman brand theme
+├── main/handlers/
+│   ├── dictionary.ts            # SQLite search, entries and Guide backend
+│   ├── input.ts                 # bounded IPC input normalization
+│   └── library.ts               # history and saved words
+├── renderer/main/
+│   ├── home-view.tsx            # Dictionary, Exams Coach and Guide
+│   ├── compact-layout.ts        # responsive list/detail panes
+│   ├── motion.ts                # system Reduce Motion preference
+│   ├── request-guard.ts         # stale async request protection
+│   ├── selection-intent.ts      # one-shot selection tracking
+│   └── verb-forms.ts            # duplicate verb-form grouping
+├── renderer/styles.css          # Pearson/Longman styling
 ├── data/led_full.sqlite         # recovered corpus (Git LFS)
-├── data/help/*.htm              # guide pages
-└── data/images/ data/audio/     # illustrations + pronunciation
+├── data/help/*.htm              # Guide pages
+├── data/images/ and data/audio/ # illustrations + pronunciation
+└── scripts/*.test.ts            # unit and real-corpus handler tests
 ```
 
 ## Setup
@@ -65,7 +78,7 @@ bash glaze-node.sh repackage
 
 ## CI
 
-Hosted CI (`verify`) runs on every push: install, repo invariants,
+Hosted CI (`verify`) runs on every push: install, repo invariants, unit tests,
 full `tsc` against committed SDK type stubs, and esbuild bundle-ability
 for both processes. The Glaze linker exists only inside the desktop app,
 so native builds stay local — or opt in: install a self-hosted runner on
