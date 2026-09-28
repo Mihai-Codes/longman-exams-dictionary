@@ -182,7 +182,7 @@ test("warm searches stay inside an interactive latency budget", async () => {
 });
 
 test("short prefix searches skip FTS ranking and stay responsive", async () => {
-  assert.equal(FTS_MIN_LENGTH, 3, "FTS floor documents the typing-responsiveness contract");
+  assert.equal(FTS_MIN_LENGTH, 4, "FTS floor documents the typing-responsiveness contract");
   const started = performance.now();
   const singles = await dictionaryHandlers.search({ query: "g", limit: 150 });
   const elapsed = performance.now() - started;

@@ -176,15 +176,10 @@ check("delayed entry hydration does not try to play reward audio",
 // static accent color by design.
 check("no animation bypasses the motion system",
   !/className=\{[^}]*animate-pulse/.test(src) && !/className="[^"]*animate-pulse/.test(src));
-// A typing burst chains stale searches into one long loading window; the
-// busy grace must restart per fired search or the icon flickers mid-burst.
-check("search busy grace restarts per fired search", /busyKey/.test(src));
-// Superseded searches must clear a stale blue immediately — otherwise the
-// icon carries the previous search's verdict across keystrokes/backspace.
-check("search busy resets on each fired search", /setShowBusy\(false\);\s*\n\s*if \(!loading\) return;/.test(src));
-// A search finishing just past the 300ms grace would otherwise pop blue for
-// a frame; fading the color turns that threshold race into a soft pulse.
-check("search icon fades its busy color instead of popping", /SearchIcon className=\{\[.*transition-colors duration-300/.test(src));
+// The search icon is a static landmark, never a status light: any
+// loading-driven recolor flashes on ordinary keystrokes and reads as a
+// glitch in the watched control. No busy state may reach the icon.
+check("search icon never reflects busy state", !/showBusy|setShowBusy|busyKey|searchTick|topicTick|setLoading/.test(src) && /<SearchIcon className="absolute left-2.5 top-1\/2 -translate-y-1\/2 size-4 pointer-events-none text-tertiary" \/>/.test(src));
 
 // 4. Shipping assets
 check("app icons present", existsSync("app-icon.png") && existsSync("app-icon.icns"));

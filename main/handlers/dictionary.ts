@@ -289,8 +289,13 @@ function ftsQuery(q: string): string {
   return toks.map((t) => `"${t.replace(/"/g, "")}"*`).join(" ");
 }
 
-// Short prefixes must never reach FTS ranking (see runSearchCorpus).
-export const FTS_MIN_LENGTH = 3;
+// Short prefixes must never reach FTS ranking (see runSearchCorpus):
+// thumb-typed prefixes are 1-3 characters, and a 3-letter FTS prefix
+// still matches thousands of definitions ("the" hits ~20k rows) while
+// ORDER BY bm25 ranks every one of them before LIMIT applies. FTS earns
+// its cost at 4+ characters, once the query is specific enough to keep
+// its match set small.
+export const FTS_MIN_LENGTH = 4;
 
 function searchJson(q: string, limit: number) {
   const entries = loadJson();
@@ -357,11 +362,12 @@ async function runSearchCorpus(q: string, limit: number): Promise<SearchHit[]> {
       }
     }
     let rest: Record<string, unknown>[] = [];
-    // FTS ranks EVERY matching document (ORDER BY bm25 ignores LIMIT), so
-    // 1-2 character prefixes match huge swaths of the corpus and made typing
-    // and deleting feel slow — exactly the window where the busy signal
-    // showed. Exact + prefix indexing covers short queries; FTS earns its
-    // cost at 3+ characters.
+    // FTS ranks EVERY matching document (ORDER BY bm25 ignores LIMIT), so a
+    // short prefix matching thousands of definitions ("the" hits ~20k rows,
+    // "tes" ~3k) costs tens of milliseconds of main-process time per
+    // keystroke. Exact + prefix indexing already fills the page for short
+    // queries, so FTS only earns its cost at 4+ characters while the indexed
+    // hits leave most of the page empty.
     if (exact.length + pref.length < limit && q.length >= FTS_MIN_LENGTH) {
       try {
         rest = d.prepare(

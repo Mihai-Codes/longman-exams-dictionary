@@ -482,8 +482,6 @@ function SearchInput({
   onChange,
   ghost,
   onClearGhost,
-  loading,
-  busyKey = 0,
   inputRef,
   placeholder = "Search headword or definition",
 }: {
@@ -491,34 +489,17 @@ function SearchInput({
   onChange: (v: string) => void;
   ghost: string;
   onClearGhost: () => void;
-  loading: boolean;
-  // Bumped by the owner every time a NEW search starts. Without it, a
-  // typing burst chains stale searches into one long `loading` window and
-  // the delayed busy timer fires mid-burst — a blue flicker on fast
-  // queries. Restarting the grace per search keeps the signal honest: it
-  // appears only when one single search is genuinely slow.
-  busyKey?: number;
   inputRef: RefObject<HTMLInputElement | null>;
   placeholder?: string;
 }) {
-  // Delayed busy signal: searches resolve in milliseconds, so signalling
-  // immediately flashes blue on every keystroke. Only signal when a single
-  // search outlasts the grace (cold DB open, slow disk) — and signal with a
-  // static accent, never motion.
-  const [showBusy, setShowBusy] = useState(false);
-  useEffect(() => {
-    // A new search invalidates the previous verdict: clear a stale blue the
-    // moment its search is superseded (typing, hold-backspace, clear), then
-    // re-arm the grace — the icon can only turn blue for the search that is
-    // still running when the grace expires, never for one already abandoned.
-    setShowBusy(false);
-    if (!loading) return;
-    const t = setTimeout(() => setShowBusy(true), 300);
-    return () => clearTimeout(t);
-  }, [loading, busyKey]);
+  // The icon is a static landmark, never a status light: local searches
+  // resolve in milliseconds, so any busy signal would flash on ordinary
+  // keystrokes (typing, hold-backspace) and read as a glitch in the exact
+  // control being watched. Slow queries surface as a results list that
+  // briefly holds its previous rows instead.
   return (
     <div className="relative">
-      <SearchIcon className={["absolute left-2.5 top-1/2 -translate-y-1/2 size-4 pointer-events-none transition-colors duration-300", showBusy ? "text-accent" : "text-tertiary"].join(" ")} />
+      <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 pointer-events-none text-tertiary" />
       {ghost && (
         <div className="absolute left-8 right-8 top-1/2 -translate-y-1/2 pointer-events-none flex items-center h-8 text-small overflow-hidden">
           <span className="invisible">{value}</span>
@@ -1132,10 +1113,7 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
   const [visibleCount, setVisibleCount] = useState(150);
   // Glosses behind the related-word chips: fetched per selected topic.
   const [ghost, setGhost] = useState("");
-  const [loading, setLoading] = useState(false);
   const [topicSearchGuard] = useState(createRequestGuard);
-  // Bumped per fired topic search so SearchInput's busy grace restarts.
-  const [topicTick, setTopicTick] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
   // Snapshot of the pane currently on screen. Dictionary keeps the previous
   // entry until getEntry returns; we keep the previous topic until its
@@ -1155,10 +1133,6 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
     let live = true;
     const t = setTimeout(async () => {
       const isCurrent = topicSearchGuard.begin();
-      if (live && isCurrent()) {
-        setLoading(true);
-        setTopicTick((tick) => tick + 1);
-      }
       try {
         const r = await invoke<Topic[]>("dictionary:topics", { query, limit: 1000 });
         if (!live || !isCurrent()) return;
@@ -1177,8 +1151,6 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
         setGhost(ghostFor(query, list[0]?.topic));
       } catch (e) {
         if (live && isCurrent()) toast.error(String(e));
-      } finally {
-        if (live && isCurrent()) setLoading(false);
       }
     }, 150);
     return () => {
@@ -1249,8 +1221,6 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
                 onChange={setQuery}
                 ghost={ghost}
                 onClearGhost={() => setGhost("")}
-                loading={loading}
-                busyKey={topicTick}
                 inputRef={inputRef}
                 placeholder="Search topics"
               />
@@ -1720,7 +1690,7 @@ function GuideView({ requestFile, onRequestOpened, onOpenCoach, active }: { requ
                 {journeyBlurb ?? (filtered.length ? `${filtered.length} pages${query ? ` for “${query}”` : ""}` : "Help pages")}
               </ToolbarDescription>
               <div className="mt-2">
-              <SearchInput value={query} onChange={setQuery} ghost="" onClearGhost={() => {}} loading={false} inputRef={guideInputRef} placeholder="Search guide pages" />
+              <SearchInput value={query} onChange={setQuery} ghost="" onClearGhost={() => {}} inputRef={guideInputRef} placeholder="Search guide pages" />
               </div>
               <div className="flex flex-wrap gap-1.5 mt-3">
               <button key="all" onClick={() => { setJourney("all"); playBlip(SFX.journey, 0.08); }} className="cursor-pointer">
@@ -1868,7 +1838,6 @@ export function HomeView() {
   const [selected, setSelected] = useState<SearchResult | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [loading, setLoading] = useState(false);
   const [ghost, setGhost] = useState("");
   const [showAbout, setShowAbout] = useState(false);
   const [resetArmed, setResetArmed] = useState(false);
@@ -1957,8 +1926,6 @@ export function HomeView() {
   queryRef.current = query;
   const [dictionarySearchGuard] = useState(createRequestGuard);
   const [wordLookupGuard] = useState(createRequestGuard);
-  // Bumped per fired search so SearchInput's busy grace restarts each time.
-  const [searchTick, setSearchTick] = useState(0);
   const selectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ⌘K focuses search, Spotlight-style.
@@ -1991,8 +1958,6 @@ export function HomeView() {
     let live = true;
     const t = setTimeout(async () => {
       const isCurrent = dictionarySearchGuard.begin();
-      setLoading(true);
-      setSearchTick((tick) => tick + 1);
       try {
         const r = await invoke<SearchResult[]>("dictionary:search", { query, limit: dictVisible });
         if (!live || !isCurrent() || queryRef.current !== query) return;
@@ -2013,9 +1978,9 @@ export function HomeView() {
           });
           // Pre-warm the side panel only once the query has settled: warming
           // per keystroke queued ~30 synchronous SQLite lookups on the main
-          // process behind the next search, delaying it past the 300ms busy
-          // threshold and pulsing the search icon while typing. Warming here
-          // keeps the first click instant; the 25ms gap between words yields
+          // process behind the next search and made typing feel sluggish.
+          // Warming here keeps the first click instant; the 25ms gap between
+          // words yields
           // the queue so a freshly typed search always runs first, and the
           // staleness check abandons warm work the moment the query moves on.
           void (async () => {
@@ -2029,8 +1994,6 @@ export function HomeView() {
         }, 350);
       } catch (e) {
         if (live && isCurrent() && queryRef.current === query) toast.error(String(e));
-      } finally {
-        if (live && isCurrent() && queryRef.current === query) setLoading(false);
       }
     }, 150);
     return () => {
@@ -2205,8 +2168,6 @@ export function HomeView() {
                   onChange={(v) => { wordLookupGuard.invalidate(); userPicked.clear(); setDictVisible(150); setQuery(v); }}
                   ghost={ghost}
                   onClearGhost={() => setGhost("")}
-                  loading={loading}
-                  busyKey={searchTick}
                   inputRef={searchRef}
                 />
                 </div>
