@@ -483,6 +483,7 @@ function SearchInput({
   ghost,
   onClearGhost,
   loading,
+  busyKey = 0,
   inputRef,
   placeholder = "Search headword or definition",
 }: {
@@ -491,14 +492,19 @@ function SearchInput({
   ghost: string;
   onClearGhost: () => void;
   loading: boolean;
+  // Bumped by the owner every time a NEW search starts. Without it, a
+  // typing burst chains stale searches into one long `loading` window and
+  // the delayed busy timer fires mid-burst — a blue flicker on fast
+  // queries. Restarting the grace per search keeps the signal honest: it
+  // appears only when one single search is genuinely slow.
+  busyKey?: number;
   inputRef: RefObject<HTMLInputElement | null>;
   placeholder?: string;
 }) {
   // Delayed busy signal: searches resolve in milliseconds, so signalling
-  // immediately flashes blue on every keystroke. Only signal when loading
-  // outlasts a pause (cold DB open, slow disk) — and signal with a static
-  // accent, never motion: a pulsing icon drew the eye on every slow query
-  // and Tailwind's animate-pulse bypassed the app's motion system.
+  // immediately flashes blue on every keystroke. Only signal when a single
+  // search outlasts the grace (cold DB open, slow disk) — and signal with a
+  // static accent, never motion.
   const [showBusy, setShowBusy] = useState(false);
   useEffect(() => {
     if (!loading) {
@@ -507,7 +513,7 @@ function SearchInput({
     }
     const t = setTimeout(() => setShowBusy(true), 300);
     return () => clearTimeout(t);
-  }, [loading]);
+  }, [loading, busyKey]);
   return (
     <div className="relative">
       <SearchIcon className={["absolute left-2.5 top-1/2 -translate-y-1/2 size-4 pointer-events-none", showBusy ? "text-accent" : "text-tertiary"].join(" ")} />
@@ -1126,6 +1132,8 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
   const [ghost, setGhost] = useState("");
   const [loading, setLoading] = useState(false);
   const [topicSearchGuard] = useState(createRequestGuard);
+  // Bumped per fired topic search so SearchInput's busy grace restarts.
+  const [topicTick, setTopicTick] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
   // Snapshot of the pane currently on screen. Dictionary keeps the previous
   // entry until getEntry returns; we keep the previous topic until its
@@ -1145,7 +1153,10 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
     let live = true;
     const t = setTimeout(async () => {
       const isCurrent = topicSearchGuard.begin();
-      if (live && isCurrent()) setLoading(true);
+      if (live && isCurrent()) {
+        setLoading(true);
+        setTopicTick((tick) => tick + 1);
+      }
       try {
         const r = await invoke<Topic[]>("dictionary:topics", { query, limit: 1000 });
         if (!live || !isCurrent()) return;
@@ -1237,6 +1248,7 @@ function CoachView({ onLookup, onOpenGuide, requestTopic, onRequestOpened }: { o
                 ghost={ghost}
                 onClearGhost={() => setGhost("")}
                 loading={loading}
+                busyKey={topicTick}
                 inputRef={inputRef}
                 placeholder="Search topics"
               />
@@ -1943,6 +1955,8 @@ export function HomeView() {
   queryRef.current = query;
   const [dictionarySearchGuard] = useState(createRequestGuard);
   const [wordLookupGuard] = useState(createRequestGuard);
+  // Bumped per fired search so SearchInput's busy grace restarts each time.
+  const [searchTick, setSearchTick] = useState(0);
   const selectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ⌘K focuses search, Spotlight-style.
@@ -1976,6 +1990,7 @@ export function HomeView() {
     const t = setTimeout(async () => {
       const isCurrent = dictionarySearchGuard.begin();
       setLoading(true);
+      setSearchTick((tick) => tick + 1);
       try {
         const r = await invoke<SearchResult[]>("dictionary:search", { query, limit: dictVisible });
         if (!live || !isCurrent() || queryRef.current !== query) return;
@@ -2189,6 +2204,7 @@ export function HomeView() {
                   ghost={ghost}
                   onClearGhost={() => setGhost("")}
                   loading={loading}
+                  busyKey={searchTick}
                   inputRef={searchRef}
                 />
                 </div>

@@ -176,6 +176,9 @@ check("delayed entry hydration does not try to play reward audio",
 // static accent color by design.
 check("no animation bypasses the motion system",
   !/className=\{[^}]*animate-pulse/.test(src) && !/className="[^"]*animate-pulse/.test(src));
+// A typing burst chains stale searches into one long loading window; the
+// busy grace must restart per fired search or the icon flickers mid-burst.
+check("search busy grace restarts per fired search", /busyKey/.test(src));
 
 // 4. Shipping assets
 check("app icons present", existsSync("app-icon.png") && existsSync("app-icon.icns"));
