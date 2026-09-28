@@ -78,11 +78,12 @@ const EMPTY_STUDY: StudyData = { synonyms: [], phrases: [], corpus: [], verb: nu
 const STUDY_CACHE_MAX = 128;
 const studyCache = new Map<string, Promise<StudyData>>();
 
-function refreshRecency<T>(cache: Map<string, T>, key: string): void {
+function refreshRecency<T>(cache: Map<string, T>, key: string): T | undefined {
   const hit = cache.get(key);
-  if (hit === undefined) return;
+  if (hit === undefined) return undefined;
   cache.delete(key);
   cache.set(key, hit);
+  return hit;
 }
 
 function evictOldest<T>(cache: Map<string, T>, maximum: number): void {
@@ -93,8 +94,7 @@ function evictOldest<T>(cache: Map<string, T>, maximum: number): void {
 
 function fetchStudy(hwd: string): Promise<StudyData> {
   const key = hwd.toLowerCase();
-  refreshRecency(studyCache, key);
-  const hit = studyCache.get(key);
+  const hit = refreshRecency(studyCache, key);
   if (hit) return hit;
   const promise = (async () => {
     const [rows, phrs, corp, vb, errs] = await Promise.all([
@@ -123,14 +123,15 @@ function fetchStudy(hwd: string): Promise<StudyData> {
 const ENTRY_CACHE_MAX = 96;
 const entryCache = new Map<string, Promise<Entry | null>>();
 
+// Unlike fetchStudy, failures rethrow so the selection handler can surface
+// them; only prefetch call sites swallow errors.
 function fetchEntry(id: number): Promise<Entry | null> {
   const key = String(id);
-  refreshRecency(entryCache, key);
-  const hit = entryCache.get(key);
+  const hit = refreshRecency(entryCache, key);
   if (hit) return hit;
-  const promise = invoke<Entry | null>("dictionary:getEntry", { id }).catch(() => {
+  const promise = invoke<Entry | null>("dictionary:getEntry", { id }).catch((err: unknown) => {
     entryCache.delete(key);
-    return null;
+    throw err;
   });
   entryCache.set(key, promise);
   evictOldest(entryCache, ENTRY_CACHE_MAX);
@@ -2000,7 +2001,7 @@ export function HomeView() {
         // few results resolve in the background, so the first click paints
         // instantly instead of paying five round-trips on selection.
         for (const warm of r.slice(0, 5)) {
-          void fetchEntry(warm.id);
+          void fetchEntry(warm.id).catch(() => {});
           void fetchStudy(warm.hwd);
         }
         // Deferred auto-select: selecting publishes getEntry (full HTML)

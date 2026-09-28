@@ -314,8 +314,9 @@ function searchRow(r: Record<string, unknown>): SearchHit {
 
 // The corpus is read-only at runtime, so memoizing bounded amounts is safe.
 // Map insertion order acts as the recency list: hits re-insert, overflow
-// evicts the oldest. Failure paths bypass the cache so a transient JSON
-// fallback can recover and win the key back.
+// evicts the oldest. JSON-fallback results are cached too — deliberate,
+// because openDb latches DB failure for the session, so the fallback is the
+// final answer for those keys and caching it also skips repeated full scans.
 const CACHE_MAX = 256;
 const searchCache = new Map<string, SearchHit[]>();
 const entryCache = new Map<string, Entry | null>();
