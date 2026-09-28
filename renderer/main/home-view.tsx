@@ -494,9 +494,11 @@ function SearchInput({
   inputRef: RefObject<HTMLInputElement | null>;
   placeholder?: string;
 }) {
-  // Delayed busy signal: searches resolve in milliseconds, so showing the
-  // accent pulse immediately flashes blue on every keystroke. Only signal
-  // when loading outlasts a pause (cold DB open, slow disk).
+  // Delayed busy signal: searches resolve in milliseconds, so signalling
+  // immediately flashes blue on every keystroke. Only signal when loading
+  // outlasts a pause (cold DB open, slow disk) — and signal with a static
+  // accent, never motion: a pulsing icon drew the eye on every slow query
+  // and Tailwind's animate-pulse bypassed the app's motion system.
   const [showBusy, setShowBusy] = useState(false);
   useEffect(() => {
     if (!loading) {
@@ -508,7 +510,7 @@ function SearchInput({
   }, [loading]);
   return (
     <div className="relative">
-      <SearchIcon className={["absolute left-2.5 top-1/2 -translate-y-1/2 size-4 pointer-events-none", showBusy ? "text-accent motion-pulse animate-pulse" : "text-tertiary"].join(" ")} />
+      <SearchIcon className={["absolute left-2.5 top-1/2 -translate-y-1/2 size-4 pointer-events-none", showBusy ? "text-accent" : "text-tertiary"].join(" ")} />
       {ghost && (
         <div className="absolute left-8 right-8 top-1/2 -translate-y-1/2 pointer-events-none flex items-center h-8 text-small overflow-hidden">
           <span className="invisible">{value}</span>
@@ -800,7 +802,7 @@ function EntryDetail({ entry, saved, onToggleSave, study, streak, showConfetti, 
             <TrophyIcon className="size-3.5 text-support-yellow" aria-hidden="true" />
             <span>{streak.xp} XP</span>
             <span aria-hidden="true">· ★ {streak.seen.length}</span>
-            {showConfetti && <span className="motion-pulse animate-pulse text-small" aria-hidden="true">✨</span>}
+            {showConfetti && <span className="motion-pulse text-small" aria-hidden="true">✨</span>}
           </div>
           <div className="flex flex-wrap items-center gap-1">
             <Button

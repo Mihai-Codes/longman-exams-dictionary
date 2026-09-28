@@ -171,6 +171,11 @@ check("same selected row can still earn its first-lookup reward",
   /if \(selected\?\.id === picked\.id\)[\s\S]{0,180}const cue = lookup\(picked\.hwd\)/.test(src));
 check("delayed entry hydration does not try to play reward audio",
   !/recordPick[\s\S]{0,180}playRewardCue/.test(src));
+// Tailwind's animate-pulse does not honor the app's motion system; motion
+// vocabulary is motion-pulse (gated in styles.css) only. Busy feedback is a
+// static accent color by design.
+check("no animation bypasses the motion system",
+  !/className=\{[^}]*animate-pulse/.test(src) && !/className="[^"]*animate-pulse/.test(src));
 
 // 4. Shipping assets
 check("app icons present", existsSync("app-icon.png") && existsSync("app-icon.icns"));

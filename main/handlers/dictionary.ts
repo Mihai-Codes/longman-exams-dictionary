@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { logger } from "@glaze/core/backend";
@@ -288,6 +289,9 @@ function ftsQuery(q: string): string {
   return toks.map((t) => `"${t.replace(/"/g, "")}"*`).join(" ");
 }
 
+// Short prefixes must never reach FTS ranking (see runSearchCorpus).
+export const FTS_MIN_LENGTH = 3;
+
 function searchJson(q: string, limit: number) {
   const entries = loadJson();
   const lowers = jsonLower!;
@@ -320,7 +324,7 @@ function searchRow(r: Record<string, unknown>): SearchHit {
 const searchCache = new LruCache<SearchHit[]>(256);
 const entryCache = new LruCache<Entry | null>(256);
 
-async function searchCorpus(q: string, limit: number): Promise<SearchHit[]> {
+async function runSearchCorpus(q: string, limit: number): Promise<SearchHit[]> {
   const d = openDb();
   if (!d) return searchJson(q, limit);
   try {
@@ -353,7 +357,12 @@ async function searchCorpus(q: string, limit: number): Promise<SearchHit[]> {
       }
     }
     let rest: Record<string, unknown>[] = [];
-    if (exact.length + pref.length < limit) {
+    // FTS ranks EVERY matching document (ORDER BY bm25 ignores LIMIT), so
+    // 1-2 character prefixes match huge swaths of the corpus and made typing
+    // and deleting feel slow — exactly the window where the busy signal
+    // showed. Exact + prefix indexing covers short queries; FTS earns its
+    // cost at 3+ characters.
+    if (exact.length + pref.length < limit && q.length >= FTS_MIN_LENGTH) {
       try {
         rest = d.prepare(
           "SELECT e.id AS id, e.hwd AS hwd, e.pron AS pron, e.pos AS pos, e.def AS def FROM entries_fts f JOIN entries e ON e.id = f.rowid WHERE entries_fts MATCH ? ORDER BY bm25(entries_fts) LIMIT ?",
@@ -368,6 +377,21 @@ async function searchCorpus(q: string, limit: number): Promise<SearchHit[]> {
     logger.error("dictionary", `search failed, JSON fallback: ${String(e)}`);
     return searchJson(q, limit);
   }
+}
+
+// Device-speed telemetry: the search icon signals busy only when a load
+// outlasts 300ms, so log anything that could cross that line — a user-side
+// "typing feels slow" report then names the exact query instead of a guess.
+const SLOW_SEARCH_MS = 250;
+
+async function searchCorpus(q: string, limit: number): Promise<SearchHit[]> {
+  const started = performance.now();
+  const result = await runSearchCorpus(q, limit);
+  const elapsed = performance.now() - started;
+  if (elapsed >= SLOW_SEARCH_MS) {
+    logger.warn("dictionary", `slow search "${q.slice(0, 32)}" limit=${limit} took ${Math.round(elapsed)}ms`);
+  }
+  return result;
 }
 
 export const dictionaryHandlers = {

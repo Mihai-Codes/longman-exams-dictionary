@@ -41,7 +41,10 @@ const handlerModule = new Module(handlerPath);
 handlerModule.filename = handlerPath;
 handlerModule.paths = Module._nodeModulePaths(path.dirname(handlerPath));
 handlerModule._compile(bundled.outputFiles[0].text, handlerPath);
-const { dictionaryHandlers } = handlerModule.exports as { dictionaryHandlers: typeof import("../main/handlers/dictionary.ts").dictionaryHandlers };
+const { dictionaryHandlers, FTS_MIN_LENGTH } = handlerModule.exports as {
+  dictionaryHandlers: typeof import("../main/handlers/dictionary.ts").dictionaryHandlers;
+  FTS_MIN_LENGTH: number;
+};
 
 test("bounded result limits never become unbounded, fractional or exceed their cap", () => {
   const limit = (value: unknown) => boundedInteger(value, 50, 1000);
@@ -176,6 +179,17 @@ test("warm searches stay inside an interactive latency budget", async () => {
   // milliseconds locally; 400ms leaves generous headroom for slow CI disks
   // while still failing loudly if a regression re-runs SQL per keystroke.
   assert.ok(elapsed < 400, `ten warm searches took ${elapsed.toFixed(1)}ms — interactive budget exceeded`);
+});
+
+test("short prefix searches skip FTS ranking and stay responsive", async () => {
+  assert.equal(FTS_MIN_LENGTH, 3, "FTS floor documents the typing-responsiveness contract");
+  const started = performance.now();
+  const singles = await dictionaryHandlers.search({ query: "g", limit: 150 });
+  const elapsed = performance.now() - started;
+  assert.ok(singles.length > 0, "prefix results exist for 'g'");
+  assert.ok(elapsed < 400, `cold single-letter search took ${elapsed.toFixed(1)}ms — FTS ranking leaked back into short queries`);
+  const doubles = await dictionaryHandlers.search({ query: "ab", limit: 150 });
+  assert.ok(doubles.length > 0);
 });
 
 test("production image handler safely serves an existing real JPEG and rejects traversal", async () => {
