@@ -179,6 +179,12 @@ check("no animation bypasses the motion system",
 // A typing burst chains stale searches into one long loading window; the
 // busy grace must restart per fired search or the icon flickers mid-burst.
 check("search busy grace restarts per fired search", /busyKey/.test(src));
+// Superseded searches must clear a stale blue immediately — otherwise the
+// icon carries the previous search's verdict across keystrokes/backspace.
+check("search busy resets on each fired search", /setShowBusy\(false\);\s*\n\s*if \(!loading\) return;/.test(src));
+// A search finishing just past the 300ms grace would otherwise pop blue for
+// a frame; fading the color turns that threshold race into a soft pulse.
+check("search icon fades its busy color instead of popping", /SearchIcon className=\{\[.*transition-colors duration-300/.test(src));
 
 // 4. Shipping assets
 check("app icons present", existsSync("app-icon.png") && existsSync("app-icon.icns"));

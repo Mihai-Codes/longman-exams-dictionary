@@ -507,16 +507,18 @@ function SearchInput({
   // static accent, never motion.
   const [showBusy, setShowBusy] = useState(false);
   useEffect(() => {
-    if (!loading) {
-      setShowBusy(false);
-      return;
-    }
+    // A new search invalidates the previous verdict: clear a stale blue the
+    // moment its search is superseded (typing, hold-backspace, clear), then
+    // re-arm the grace — the icon can only turn blue for the search that is
+    // still running when the grace expires, never for one already abandoned.
+    setShowBusy(false);
+    if (!loading) return;
     const t = setTimeout(() => setShowBusy(true), 300);
     return () => clearTimeout(t);
   }, [loading, busyKey]);
   return (
     <div className="relative">
-      <SearchIcon className={["absolute left-2.5 top-1/2 -translate-y-1/2 size-4 pointer-events-none", showBusy ? "text-accent" : "text-tertiary"].join(" ")} />
+      <SearchIcon className={["absolute left-2.5 top-1/2 -translate-y-1/2 size-4 pointer-events-none transition-colors duration-300", showBusy ? "text-accent" : "text-tertiary"].join(" ")} />
       {ghost && (
         <div className="absolute left-8 right-8 top-1/2 -translate-y-1/2 pointer-events-none flex items-center h-8 text-small overflow-hidden">
           <span className="invisible">{value}</span>
