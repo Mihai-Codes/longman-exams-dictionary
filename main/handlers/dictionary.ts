@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { logger } from "@glaze/core/backend";
 import { boundedInteger, normalizedQuery, normalizedString, normalizedStrings } from "./input.js";
+import { LruCache } from "../../renderer/shared/lru.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -313,30 +314,11 @@ function searchRow(r: Record<string, unknown>): SearchHit {
 }
 
 // The corpus is read-only at runtime, so memoizing bounded amounts is safe.
-// Map insertion order acts as the recency list: hits re-insert, overflow
-// evicts the oldest. JSON-fallback results are cached too — deliberate,
-// because openDb latches DB failure for the session, so the fallback is the
-// final answer for those keys and caching it also skips repeated full scans.
-const CACHE_MAX = 256;
-const searchCache = new Map<string, SearchHit[]>();
-const entryCache = new Map<string, Entry | null>();
-
-function cacheGet<T>(cache: Map<string, T>, key: string): T | undefined {
-  const hit = cache.get(key);
-  if (hit === undefined) return undefined;
-  cache.delete(key);
-  cache.set(key, hit);
-  return hit;
-}
-
-function cachePut<T>(cache: Map<string, T>, key: string, value: T): void {
-  if (cache.has(key)) cache.delete(key);
-  cache.set(key, value);
-  if (cache.size > CACHE_MAX) {
-    const oldest = cache.keys().next().value;
-    if (oldest !== undefined) cache.delete(oldest);
-  }
-}
+// JSON-fallback results are cached too — deliberate, because openDb latches
+// DB failure for the session, so the fallback is the final answer for those
+// keys and caching it also skips repeated full scans.
+const searchCache = new LruCache<SearchHit[]>(256);
+const entryCache = new LruCache<Entry | null>(256);
 
 async function searchCorpus(q: string, limit: number): Promise<SearchHit[]> {
   const d = openDb();
@@ -399,10 +381,10 @@ export const dictionaryHandlers = {
     // past one screen; exact/prefix paths stay index-cheap at any limit.
     const limit = boundedInteger(params?.limit, 50, 1000);
     const cacheKey = `${limit}\u0000${q}`;
-    const hit = cacheGet(searchCache, cacheKey);
+    const hit = searchCache.get(cacheKey);
     if (hit) return hit;
     const result = await searchCorpus(q, limit);
-    cachePut(searchCache, cacheKey, result);
+    searchCache.set(cacheKey, result);
     return result;
   },
 
@@ -413,7 +395,7 @@ export const dictionaryHandlers = {
     if (params?.id !== undefined && (typeof params.id !== "number" || !Number.isSafeInteger(params.id) || params.id < 0)) return null;
 
     const cacheKey = id !== null ? `id:${id}` : `hwd:${hwd}`;
-    const cached = cacheGet(entryCache, cacheKey);
+    const cached = entryCache.get(cacheKey);
     if (cached !== undefined) return cached;
 
     const d = openDb();
@@ -436,7 +418,7 @@ export const dictionaryHandlers = {
       const entries = loadJson();
       entry = id !== null ? entries[id] ?? null : entries.find((e) => e.hwd.toLowerCase() === hwd) ?? null;
     }
-    cachePut(entryCache, cacheKey, entry);
+    entryCache.set(cacheKey, entry);
     return entry;
   },
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { performance } from "node:perf_hooks";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { existsSync } from "node:fs";
@@ -161,6 +162,20 @@ test("repeat searches and entry lookups are served consistently from cache", asy
   // Paged browsing caches per limit, so "Show more" keeps its own snapshot.
   const paged = await dictionaryHandlers.search({ query: "", limit: 150 });
   assert.deepEqual(await dictionaryHandlers.search({ query: "", limit: 150 }), paged);
+});
+
+test("warm searches stay inside an interactive latency budget", async () => {
+  // A deliberate stress mix: prefixes, exact hits, multi-token FTS, an
+  // inflection, a no-hit query and the A-Z page walk.
+  const queries = ["acc", "accept", "gobsmacked", "take aback", "children", "zzqx", "look", "information", "the", ""];
+  for (const q of queries) await dictionaryHandlers.search({ query: q, limit: 150 });
+  const started = performance.now();
+  for (const q of queries) await dictionaryHandlers.search({ query: q, limit: 150 });
+  const elapsed = performance.now() - started;
+  // Cache hits are Map lookups, so ten warm searches should cost single-digit
+  // milliseconds locally; 400ms leaves generous headroom for slow CI disks
+  // while still failing loudly if a regression re-runs SQL per keystroke.
+  assert.ok(elapsed < 400, `ten warm searches took ${elapsed.toFixed(1)}ms — interactive budget exceeded`);
 });
 
 test("production image handler safely serves an existing real JPEG and rejects traversal", async () => {

@@ -5,6 +5,7 @@ import { useCompactPane } from "./compact-layout";
 import { createRequestGuard } from "./request-guard";
 import { createSelectionIntent } from "./selection-intent";
 import { awardLookup } from "./gamification";
+import { LruCache } from "../shared/lru";
 import {
   Button,
   Input,
@@ -73,28 +74,13 @@ const EMPTY_STUDY: StudyData = { synonyms: [], phrases: [], corpus: [], verb: nu
 // Bounded promise caches for the side panel: the same word reached through
 // search, history, favorites or related links fetches its sections once, and
 // search results pre-warm the top hits so the first click paints instantly.
-// Failures evict their key, so a later retry can succeed. Map insertion
-// order is the recency list.
+// Failures evict their key, so a later retry can succeed.
 const STUDY_CACHE_MAX = 128;
-const studyCache = new Map<string, Promise<StudyData>>();
-
-function refreshRecency<T>(cache: Map<string, T>, key: string): T | undefined {
-  const hit = cache.get(key);
-  if (hit === undefined) return undefined;
-  cache.delete(key);
-  cache.set(key, hit);
-  return hit;
-}
-
-function evictOldest<T>(cache: Map<string, T>, maximum: number): void {
-  if (cache.size <= maximum) return;
-  const oldest = cache.keys().next().value;
-  if (oldest !== undefined) cache.delete(oldest);
-}
+const studyCache = new LruCache<Promise<StudyData>>(STUDY_CACHE_MAX);
 
 function fetchStudy(hwd: string): Promise<StudyData> {
   const key = hwd.toLowerCase();
-  const hit = refreshRecency(studyCache, key);
+  const hit = studyCache.get(key);
   if (hit) return hit;
   const promise = (async () => {
     const [rows, phrs, corp, vb, errs] = await Promise.all([
@@ -116,25 +102,23 @@ function fetchStudy(hwd: string): Promise<StudyData> {
     return EMPTY_STUDY;
   });
   studyCache.set(key, promise);
-  evictOldest(studyCache, STUDY_CACHE_MAX);
   return promise;
 }
 
 const ENTRY_CACHE_MAX = 96;
-const entryCache = new Map<string, Promise<Entry | null>>();
+const entryCache = new LruCache<Promise<Entry | null>>(ENTRY_CACHE_MAX);
 
 // Unlike fetchStudy, failures rethrow so the selection handler can surface
 // them; only prefetch call sites swallow errors.
 function fetchEntry(id: number): Promise<Entry | null> {
   const key = String(id);
-  const hit = refreshRecency(entryCache, key);
+  const hit = entryCache.get(key);
   if (hit) return hit;
   const promise = invoke<Entry | null>("dictionary:getEntry", { id }).catch((err: unknown) => {
     entryCache.delete(key);
     throw err;
   });
   entryCache.set(key, promise);
-  evictOldest(entryCache, ENTRY_CACHE_MAX);
   return promise;
 }
 type Stats = {
@@ -2012,11 +1996,17 @@ export function HomeView() {
           // per keystroke queued ~30 synchronous SQLite lookups on the main
           // process behind the next search, delaying it past the 300ms busy
           // threshold and pulsing the search icon while typing. Warming here
-          // keeps the first click instant without taxing active typing.
-          for (const warm of r.slice(0, 5)) {
-            void fetchEntry(warm.id).catch(() => {});
-            void fetchStudy(warm.hwd);
-          }
+          // keeps the first click instant; the 25ms gap between words yields
+          // the queue so a freshly typed search always runs first, and the
+          // staleness check abandons warm work the moment the query moves on.
+          void (async () => {
+            for (const warm of r.slice(0, 5)) {
+              if (!live || !isCurrent() || queryRef.current !== query) return;
+              void fetchEntry(warm.id).catch(() => {});
+              void fetchStudy(warm.hwd);
+              await new Promise((resolve) => setTimeout(resolve, 25));
+            }
+          })();
         }, 350);
       } catch (e) {
         if (live && isCurrent() && queryRef.current === query) toast.error(String(e));
