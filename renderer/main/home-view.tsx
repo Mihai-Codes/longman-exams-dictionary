@@ -69,6 +69,73 @@ type StudyData = {
   mistakes: { bad: string; good: string; info: string }[];
 };
 const EMPTY_STUDY: StudyData = { synonyms: [], phrases: [], corpus: [], verb: null, mistakes: [] };
+
+// Bounded promise caches for the side panel: the same word reached through
+// search, history, favorites or related links fetches its sections once, and
+// search results pre-warm the top hits so the first click paints instantly.
+// Failures evict their key, so a later retry can succeed. Map insertion
+// order is the recency list.
+const STUDY_CACHE_MAX = 128;
+const studyCache = new Map<string, Promise<StudyData>>();
+
+function refreshRecency<T>(cache: Map<string, T>, key: string): void {
+  const hit = cache.get(key);
+  if (hit === undefined) return;
+  cache.delete(key);
+  cache.set(key, hit);
+}
+
+function evictOldest<T>(cache: Map<string, T>, maximum: number): void {
+  if (cache.size <= maximum) return;
+  const oldest = cache.keys().next().value;
+  if (oldest !== undefined) cache.delete(oldest);
+}
+
+function fetchStudy(hwd: string): Promise<StudyData> {
+  const key = hwd.toLowerCase();
+  refreshRecency(studyCache, key);
+  const hit = studyCache.get(key);
+  if (hit) return hit;
+  const promise = (async () => {
+    const [rows, phrs, corp, vb, errs] = await Promise.all([
+      invoke<{ assoc: string; gloss: string }[]>("dictionary:thesaurus", { hwd }),
+      invoke<string[]>("dictionary:phrases", { hwd }),
+      invoke<{ source: string; sentence: string }[]>("dictionary:corpus", { hwd }),
+      invoke<{ simple_form: string; past: string; past_part: string } | null>("dictionary:verb", { hwd }),
+      invoke<{ bad: string; good: string; info: string }[]>("dictionary:errors", { hwd }),
+    ]);
+    return {
+      synonyms: rows ?? [],
+      phrases: phrs ?? [],
+      corpus: corp ?? [],
+      verb: vb ?? null,
+      mistakes: errs ?? [],
+    };
+  })().catch(() => {
+    studyCache.delete(key);
+    return EMPTY_STUDY;
+  });
+  studyCache.set(key, promise);
+  evictOldest(studyCache, STUDY_CACHE_MAX);
+  return promise;
+}
+
+const ENTRY_CACHE_MAX = 96;
+const entryCache = new Map<string, Promise<Entry | null>>();
+
+function fetchEntry(id: number): Promise<Entry | null> {
+  const key = String(id);
+  refreshRecency(entryCache, key);
+  const hit = entryCache.get(key);
+  if (hit) return hit;
+  const promise = invoke<Entry | null>("dictionary:getEntry", { id }).catch(() => {
+    entryCache.delete(key);
+    return null;
+  });
+  entryCache.set(key, promise);
+  evictOldest(entryCache, ENTRY_CACHE_MAX);
+  return promise;
+}
 type Stats = {
   totalEntries: number;
 };
@@ -1868,27 +1935,9 @@ export function HomeView() {
     // Fast selection changes (arrow-key scrolling) overlap fetches — stale
     // responses must never overwrite the current word's sections.
     let live = true;
-    void (async () => {
-      try {
-        const [rows, phrs, corp, vb, errs] = await Promise.all([
-          invoke<{ assoc: string; gloss: string }[]>("dictionary:thesaurus", { hwd }),
-          invoke<string[]>("dictionary:phrases", { hwd }),
-          invoke<{ source: string; sentence: string }[]>("dictionary:corpus", { hwd }),
-          invoke<{ simple_form: string; past: string; past_part: string } | null>("dictionary:verb", { hwd }),
-          invoke<{ bad: string; good: string; info: string }[]>("dictionary:errors", { hwd }),
-        ]);
-        if (!live) return;
-        setStudy({
-          synonyms: rows ?? [],
-          phrases: phrs ?? [],
-          corpus: corp ?? [],
-          verb: vb ?? null,
-          mistakes: errs ?? [],
-        });
-      } catch {
-        if (live) setStudy(EMPTY_STUDY);
-      }
-    })();
+    void fetchStudy(hwd).then((data) => {
+      if (live) setStudy(data);
+    });
     return () => {
       live = false;
     };
@@ -1947,6 +1996,13 @@ export function HomeView() {
         if (r.length === 0) compactPane.showList();
         // Predictive: ghost the rest of the top result
         setGhost(ghostFor(query, r[0]?.hwd));
+        // Pre-warm the side panel: entries and study sections for the first
+        // few results resolve in the background, so the first click paints
+        // instantly instead of paying five round-trips on selection.
+        for (const warm of r.slice(0, 5)) {
+          void fetchEntry(warm.id);
+          void fetchStudy(warm.hwd);
+        }
         // Deferred auto-select: selecting publishes getEntry (full HTML)
         // plus 5 study invokes, so doing it per keystroke multiplies
         // backend round-trips by every character typed. Wait for a pause.
@@ -1984,7 +2040,7 @@ export function HomeView() {
     void (async () => {
       try {
         const recordPick = userPicked.consume(selected.id);
-        const e = await invoke<Entry | null>("dictionary:getEntry", { id: selected.id });
+        const e = await fetchEntry(selected.id);
         if (!live) return;
         setSelectedEntry(e);
         if (recordPick) recordLookup(selected.hwd, (h) => { if (live) setHistory(h ?? []); });

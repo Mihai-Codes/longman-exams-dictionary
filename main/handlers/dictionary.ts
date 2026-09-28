@@ -305,6 +305,88 @@ function searchJson(q: string, limit: number) {
   return out.slice(0, limit).map((r) => ({ id: r.idx, hwd: r.e.hwd, pron: r.e.pron, pos: r.e.pos, def: r.e.def }));
 }
 
+type SearchHit = { id: unknown; hwd: unknown; pron: unknown; pos: unknown; def: unknown };
+
+// One shape for every search row, so SQL and JSON fallbacks stay identical.
+function searchRow(r: Record<string, unknown>): SearchHit {
+  return { id: r["id"], hwd: r["hwd"], pron: r["pron"], pos: r["pos"], def: r["def"] };
+}
+
+// The corpus is read-only at runtime, so memoizing bounded amounts is safe.
+// Map insertion order acts as the recency list: hits re-insert, overflow
+// evicts the oldest. Failure paths bypass the cache so a transient JSON
+// fallback can recover and win the key back.
+const CACHE_MAX = 256;
+const searchCache = new Map<string, SearchHit[]>();
+const entryCache = new Map<string, Entry | null>();
+
+function cacheGet<T>(cache: Map<string, T>, key: string): T | undefined {
+  const hit = cache.get(key);
+  if (hit === undefined) return undefined;
+  cache.delete(key);
+  cache.set(key, hit);
+  return hit;
+}
+
+function cachePut<T>(cache: Map<string, T>, key: string, value: T): void {
+  if (cache.has(key)) cache.delete(key);
+  cache.set(key, value);
+  if (cache.size > CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+}
+
+async function searchCorpus(q: string, limit: number): Promise<SearchHit[]> {
+  const d = openDb();
+  if (!d) return searchJson(q, limit);
+  try {
+    if (!q) {
+      return (d.prepare("SELECT id, hwd, pron, pos, def FROM entries ORDER BY hwd_lower LIMIT ?").all(limit) as Record<string, unknown>[]).map(searchRow);
+    }
+    // 1) exact headword
+    const exact = d.prepare("SELECT id, hwd, pron, pos, def FROM entries WHERE hwd_lower = ? LIMIT ?").all(q, limit) as Record<string, unknown>[];
+    // 2) headword prefix
+    const pref = d.prepare("SELECT id, hwd, pron, pos, def FROM entries WHERE hwd_lower LIKE ? ESCAPE '\\' AND hwd_lower != ? ORDER BY hwd_lower LIMIT ?").all(
+      q.replace(/[%_\\]/g, (c) => `\\${c}`) + "%",
+      q,
+      limit,
+    ) as Record<string, unknown>[];
+    const seen = new Set<unknown>([...exact, ...pref].map((r) => r["id"]));
+    // 2b) inflected form ("went" -> go, "children" -> child): single words only
+    if (exact.length + pref.length < limit && !q.includes(" ")) {
+      try {
+        const infl = d.prepare(
+          "SELECT e.id AS id, e.hwd AS hwd, e.pron AS pron, e.pos AS pos, e.def AS def FROM inflections i JOIN entries e ON e.id = i.entry_id WHERE i.form_lower = ? LIMIT ?",
+        ).all(q, limit) as Record<string, unknown>[];
+        for (const r of infl) {
+          if (!seen.has(r["id"])) {
+            seen.add(r["id"]);
+            pref.push(r);
+          }
+        }
+      } catch {
+        /* no inflections table — FTS still covers */
+      }
+    }
+    let rest: Record<string, unknown>[] = [];
+    if (exact.length + pref.length < limit) {
+      try {
+        rest = d.prepare(
+          "SELECT e.id AS id, e.hwd AS hwd, e.pron AS pron, e.pos AS pos, e.def AS def FROM entries_fts f JOIN entries e ON e.id = f.rowid WHERE entries_fts MATCH ? ORDER BY bm25(entries_fts) LIMIT ?",
+        ).all(ftsQuery(q), limit * 2) as Record<string, unknown>[];
+      } catch {
+        rest = [];
+      }
+      rest = rest.filter((r) => !seen.has(r["id"]));
+    }
+    return [...exact, ...pref, ...rest].slice(0, limit).map(searchRow);
+  } catch (e) {
+    logger.error("dictionary", `search failed, JSON fallback: ${String(e)}`);
+    return searchJson(q, limit);
+  }
+}
+
 export const dictionaryHandlers = {
   search: async (params: { query?: unknown; limit?: unknown } | null) => {
     if (params?.limit !== undefined && params?.limit !== null && (typeof params.limit !== "number" || !Number.isFinite(params.limit))) {
@@ -315,59 +397,12 @@ export const dictionaryHandlers = {
     // Paged browsing (empty/short queries walk the A-Z list) needs headroom
     // past one screen; exact/prefix paths stay index-cheap at any limit.
     const limit = boundedInteger(params?.limit, 50, 1000);
-    const d = openDb();
-    if (!d) return searchJson(q, limit);
-    try {
-      if (!q) {
-        return (d.prepare("SELECT id, hwd, pron, pos, def FROM entries ORDER BY hwd_lower LIMIT ?").all(limit) as Record<string, unknown>[]).map((r) => ({
-          id: r["id"],
-          hwd: r["hwd"],
-          pron: r["pron"],
-          pos: r["pos"],
-          def: r["def"],
-        }));
-      }
-      // 1) exact headword
-      const exact = d.prepare("SELECT id, hwd, pron, pos, def FROM entries WHERE hwd_lower = ? LIMIT ?").all(q, limit) as Record<string, unknown>[];
-      // 2) headword prefix
-      const pref = d.prepare("SELECT id, hwd, pron, pos, def FROM entries WHERE hwd_lower LIKE ? ESCAPE '\\' AND hwd_lower != ? ORDER BY hwd_lower LIMIT ?").all(
-        q.replace(/[%_\\]/g, (c) => `\\${c}`) + "%",
-        q,
-        limit,
-      ) as Record<string, unknown>[];
-      const seen = new Set<unknown>([...exact, ...pref].map((r) => r["id"]));
-      // 2b) inflected form ("went" -> go, "children" -> child): single words only
-      if (exact.length + pref.length < limit && !q.includes(" ")) {
-        try {
-          const infl = d.prepare(
-            "SELECT e.id AS id, e.hwd AS hwd, e.pron AS pron, e.pos AS pos, e.def AS def FROM inflections i JOIN entries e ON e.id = i.entry_id WHERE i.form_lower = ? LIMIT ?",
-          ).all(q, limit) as Record<string, unknown>[];
-          for (const r of infl) {
-            if (!seen.has(r["id"])) {
-              seen.add(r["id"]);
-              pref.push(r);
-            }
-          }
-        } catch {
-          /* no inflections table — FTS still covers */
-        }
-      }
-      let rest: Record<string, unknown>[] = [];
-      if (exact.length + pref.length < limit) {
-        try {
-          rest = d.prepare(
-            "SELECT e.id AS id, e.hwd AS hwd, e.pron AS pron, e.pos AS pos, e.def AS def FROM entries_fts f JOIN entries e ON e.id = f.rowid WHERE entries_fts MATCH ? ORDER BY bm25(entries_fts) LIMIT ?",
-          ).all(ftsQuery(q), limit * 2) as Record<string, unknown>[];
-        } catch {
-          rest = [];
-        }
-        rest = rest.filter((r) => !seen.has(r["id"]));
-      }
-      return [...exact, ...pref, ...rest].slice(0, limit).map((r) => ({ id: r["id"], hwd: r["hwd"], pron: r["pron"], pos: r["pos"], def: r["def"] }));
-    } catch (e) {
-      logger.error("dictionary", `search failed, JSON fallback: ${String(e)}`);
-      return searchJson(q, limit);
-    }
+    const cacheKey = `${limit}\u0000${q}`;
+    const hit = cacheGet(searchCache, cacheKey);
+    if (hit) return hit;
+    const result = await searchCorpus(q, limit);
+    cachePut(searchCache, cacheKey, result);
+    return result;
   },
 
   getEntry: async (params: { id?: unknown; hwd?: unknown } | null) => {
@@ -376,7 +411,12 @@ export const dictionaryHandlers = {
     if (id === null && !hwd) return null;
     if (params?.id !== undefined && (typeof params.id !== "number" || !Number.isSafeInteger(params.id) || params.id < 0)) return null;
 
+    const cacheKey = id !== null ? `id:${id}` : `hwd:${hwd}`;
+    const cached = cacheGet(entryCache, cacheKey);
+    if (cached !== undefined) return cached;
+
     const d = openDb();
+    let entry: Entry | null | undefined;
     if (d) {
       try {
         const r = id !== null
@@ -386,14 +426,17 @@ export const dictionaryHandlers = {
           : d.prepare(
               `SELECT e.hwd AS hwd, e.pron AS pron, e.pos AS pos, e.def AS def, e.html AS html, ${FREQ_COLS} FROM entries e WHERE e.hwd_lower = ? LIMIT 1`,
             ).get(hwd) as Record<string, unknown> | undefined;
-        return r ? rowToEntry(r) : null;
+        entry = r ? rowToEntry(r) : null;
       } catch (e) {
         logger.error("dictionary", `getEntry failed: ${String(e)}`);
       }
     }
-    const entries = loadJson();
-    if (id !== null) return entries[id] ?? null;
-    return entries.find((e) => e.hwd.toLowerCase() === hwd) ?? null;
+    if (entry === undefined) {
+      const entries = loadJson();
+      entry = id !== null ? entries[id] ?? null : entries.find((e) => e.hwd.toLowerCase() === hwd) ?? null;
+    }
+    cachePut(entryCache, cacheKey, entry);
+    return entry;
   },
 
   stats: async () => {

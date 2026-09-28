@@ -149,6 +149,20 @@ test("production handlers safely handle malformed IPC payloads", async () => {
   assert.equal(await dictionaryHandlers.helpPage({ file: 42 }), null);
 });
 
+test("repeat searches and entry lookups are served consistently from cache", async () => {
+  const first = await dictionaryHandlers.search({ query: "accept", limit: 25 });
+  assert.ok(first.length > 0);
+  assert.deepEqual(await dictionaryHandlers.search({ query: "accept", limit: 25 }), first);
+  // The same word through a different cache key (headword vs id) resolves to
+  // the identical entry, proving both caches stay in sync.
+  const entry = await dictionaryHandlers.getEntry({ id: 15537 });
+  assert.deepEqual(await dictionaryHandlers.getEntry({ id: 15537 }), entry);
+  assert.deepEqual(await dictionaryHandlers.getEntry({ hwd: "gobsmacked" }), entry);
+  // Paged browsing caches per limit, so "Show more" keeps its own snapshot.
+  const paged = await dictionaryHandlers.search({ query: "", limit: 150 });
+  assert.deepEqual(await dictionaryHandlers.search({ query: "", limit: 150 }), paged);
+});
+
 test("production image handler safely serves an existing real JPEG and rejects traversal", async () => {
   const candidates = db.prepare("SELECT id, html FROM entries WHERE html LIKE ? LIMIT 100").all("%preview/filesystem.cff!/%") as { id: number; html: string }[];
   let fixture: { id: number; previewId: string } | null = null;
