@@ -1997,13 +1997,6 @@ export function HomeView() {
         if (r.length === 0) compactPane.showList();
         // Predictive: ghost the rest of the top result
         setGhost(ghostFor(query, r[0]?.hwd));
-        // Pre-warm the side panel: entries and study sections for the first
-        // few results resolve in the background, so the first click paints
-        // instantly instead of paying five round-trips on selection.
-        for (const warm of r.slice(0, 5)) {
-          void fetchEntry(warm.id).catch(() => {});
-          void fetchStudy(warm.hwd);
-        }
         // Deferred auto-select: selecting publishes getEntry (full HTML)
         // plus 5 study invokes, so doing it per keystroke multiplies
         // backend round-trips by every character typed. Wait for a pause.
@@ -2015,6 +2008,15 @@ export function HomeView() {
             if (r.length === 0) return null;
             return prev;
           });
+          // Pre-warm the side panel only once the query has settled: warming
+          // per keystroke queued ~30 synchronous SQLite lookups on the main
+          // process behind the next search, delaying it past the 300ms busy
+          // threshold and pulsing the search icon while typing. Warming here
+          // keeps the first click instant without taxing active typing.
+          for (const warm of r.slice(0, 5)) {
+            void fetchEntry(warm.id).catch(() => {});
+            void fetchStudy(warm.hwd);
+          }
         }, 350);
       } catch (e) {
         if (live && isCurrent() && queryRef.current === query) toast.error(String(e));
